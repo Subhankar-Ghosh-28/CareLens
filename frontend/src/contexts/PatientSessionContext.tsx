@@ -209,14 +209,17 @@ export const PatientSessionProvider: React.FC<{
   );
 
   const addUploadedDocument = (doc: MedicalDocument) => {
+    const isRealPatientDocument = /^\d+$/.test(doc.patientId);
     const enrichedDoc: MedicalDocument = {
       ...doc,
       title: (doc as any).title || doc.filename || "Uploaded Document",
       fileName: (doc as any).fileName || doc.filename || "file.pdf",
       documentType: (doc as any).documentType || doc.category || "Prescription",
-      confidenceScore: (doc as any).confidenceScore || 0.95,
+      confidenceScore:
+        (doc as any).confidenceScore ??
+        (typeof doc.confidence === "number" ? doc.confidence / 100 : undefined),
       extractedData: (doc as any).extractedData || {
-        medications: [{ name: "Prescribed Medication" }],
+        medications: isRealPatientDocument ? [] : [{ name: "Prescribed Medication" }],
         labResults: [],
       },
     };

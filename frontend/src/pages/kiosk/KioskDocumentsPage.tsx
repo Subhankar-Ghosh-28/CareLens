@@ -176,7 +176,9 @@ export const KioskDocumentsPage: React.FC = () => {
                 const medsCount = doc.extractedData?.medications?.length || 0;
                 const labCount = doc.extractedData?.labResults?.length || 0;
                 const diagCount = doc.extractedData?.diagnoses?.length || 0;
-                const score = doc.confidenceScore ?? (doc.confidence ? doc.confidence / 100 : 0.95);
+                const score =
+                  doc.confidenceScore ??
+                  (typeof doc.confidence === 'number' ? doc.confidence / 100 : undefined);
 
                 return (
                   <div
@@ -211,7 +213,7 @@ export const KioskDocumentsPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 pt-2 sm:pt-0">
-                      <ConfidenceBadge score={score} />
+                      {typeof score === 'number' && <ConfidenceBadge score={score} />}
                       <button
                         type="button"
                         onClick={() => removeUploadedDocument(doc.id)}
