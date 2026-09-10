@@ -105,6 +105,7 @@ backend/**/*.py[cod]
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 
 # Virtual environments
 backend/venv/

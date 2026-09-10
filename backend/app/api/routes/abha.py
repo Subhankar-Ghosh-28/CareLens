@@ -42,7 +42,7 @@ def verify_abha(data: AbhaVerifyRequest):
             "error": (
                 "Please enter a valid 14-digit ABHA Number "
                 "(e.g. 91-4521-8890-3321) or ABHA Address "
-                "(e.g. ananya@abdm)."
+                "(e.g. bishai@abdm)."
             )
         }
 
@@ -51,6 +51,6 @@ def verify_abha(data: AbhaVerifyRequest):
     return {
         "success": True,
         "isSandbox": True,
-        "patientName": "Ananya Sharma",
+        "patientName": "Dipankar Bishai",
         "error": None
     }
