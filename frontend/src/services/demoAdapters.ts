@@ -76,20 +76,38 @@ export class DemoAbhaService implements IAbhaService {
     };
   }
 
-  async verifyAbha(abhaId: string): Promise<{ success: boolean; isSandbox: boolean; patientName?: string; error?: string }> {
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    const validation = this.validateFormat(abhaId);
-    if (!validation.isValid) {
-      return { success: false, isSandbox: true, error: validation.error };
-    }
+  async verifyAbha(
+  abhaId: string
+): Promise<{
+  success: boolean;
+  isSandbox: boolean;
+  patientName?: string;
+  error?: string;
+}> {
+  try {
+    const response = await fetch('http://localhost:8000/api/abha/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        abhaId: abhaId.trim()
+      })
+    });
 
-    // Deterministic Sandbox verification
+    const result = await response.json();
+
+    return result;
+  } catch (error) {
+    console.error('ABHA verification error:', error);
+
     return {
-      success: true,
+      success: false,
       isSandbox: true,
-      patientName: 'Ananya Sharma'
+      error: 'Unable to connect to ABHA verification service.'
     };
   }
+}
 
   getOfficialCreateUrl(): string {
     const configuredUrl = (import.meta as any).env?.VITE_ABHA_CREATE_URL;
