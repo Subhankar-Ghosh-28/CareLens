@@ -6,10 +6,15 @@ from app.core.database import engine, Base
 from app.api.routes.patients import router as patient_router
 from app.api.routes.abha import router as abha_router
 from app.models.patient import Patient
+from app.models.clinical_history import ClinicalHistory
+
+from app.api.routes.clinical_history import router as clinical_history_router
+
 app = FastAPI(
     title="CareLens API",
     description="AI-Assisted Clinical Intake Platform",
     version="1.0.0",
+    debug=True,
 )
 
 app.add_middleware(
@@ -28,6 +33,8 @@ Base.metadata.create_all(bind=engine)
 app.include_router(patient_router)
 
 app.include_router(abha_router)
+
+app.include_router(clinical_history_router)
 
 
 @app.get("/")
