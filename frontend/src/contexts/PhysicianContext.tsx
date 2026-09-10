@@ -153,6 +153,42 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }));
 
   const [patientQueue, setPatientQueue] = useState<ExtendedQueueItem[]>(initialQueue);
+
+  useEffect(() => {
+  const loadRealPatients = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/patients/');
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch patients');
+      }
+
+      const patients = await response.json();
+
+      const realQueue: ExtendedQueueItem[] = patients.map((patient: any) => ({
+        ...patient,
+        patientId: String(patient.id),
+        patientName: patient.name,
+        name: patient.name,
+        visitId: `OPD-${patient.id}`,
+        chiefComplaint: 'Clinical history pending',
+        priority: 'NORMAL',
+        triageAcuity: 'NORMAL',
+        status: 'NEEDS_REVIEW',
+        summaryConfirmed: false,
+        historyStatus: 'Pending',
+        abhaId: undefined
+      }));
+
+      setPatientQueue(realQueue);
+    } catch (error) {
+      console.error('Failed to load real patients:', error);
+    }
+  };
+
+  loadRealPatients();
+}, []);
+
   const [selectedPatientId, setSelectedPatientId] = useState<string>('pt_ananya_01');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [priorityFilter, setPriorityFilter] = useState<'ALL' | 'CRITICAL' | 'HIGH' | 'NORMAL'>('ALL');
@@ -397,24 +433,28 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const getPatientById = (id: string): Patient | undefined => {
-    if (id === 'pt_ananya_01' || !id) return DEMO_PATIENT_ANANYA;
-    const queueItem = (patientQueue || []).find(p => p.patientId === id || (p as any).id === id);
-    if (queueItem) {
-      return {
-        id: queueItem.patientId,
-        name: queueItem.patientName || queueItem.name,
-        age: queueItem.age,
-        gender: queueItem.gender,
-        visitId: queueItem.visitId,
-        visitDate: '2026-09-09',
-        language: 'en',
-        clinicalTrack: 'MODERN_MEDICINE',
-        abhaId: queueItem.abhaId || '91-4521-8890-3321',
-        abhaStatus: 'SANDBOX_VERIFIED'
-      };
-    }
-    return DEMO_PATIENT_ANANYA;
-  };
+  const queueItem = (patientQueue || []).find(
+    p => p.patientId === id || (p as any).id === id
+  );
+
+  if (queueItem) {
+    return {
+      id: queueItem.patientId,
+      name: queueItem.patientName || queueItem.name,
+      age: queueItem.age,
+      gender: queueItem.gender,
+      phone: (queueItem as any).phone,
+      visitId: queueItem.visitId,
+      visitDate: new Date().toISOString().split('T')[0],
+      language: 'en',
+      clinicalTrack: (queueItem as any).clinicalTrack || 'MODERN_MEDICINE',
+      abhaId: queueItem.abhaId,
+      abhaStatus: queueItem.abhaId ? 'SANDBOX_VERIFIED' : 'NOT_CONFIGURED'
+    };
+  }
+
+  return undefined;
+};
 
   const getSummaryByPatientId = (id: string): DoctorSummaryItem | undefined => {
     return {

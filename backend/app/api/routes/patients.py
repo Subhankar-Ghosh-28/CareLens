@@ -29,3 +29,9 @@ def create_patient(
     db.refresh(new_patient)
 
     return new_patient
+
+@router.get("/", response_model=list[PatientResponse])
+def get_patients(
+    db: Session = Depends(get_db)
+):
+    return db.query(Patient).order_by(Patient.id.desc()).all()
