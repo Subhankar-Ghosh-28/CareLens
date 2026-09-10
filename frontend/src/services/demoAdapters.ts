@@ -8,8 +8,8 @@ import {
   ISummaryService,
   IAlertService,
   IHisService,
-  IAuditService
-} from './interfaces';
+  IAuditService,
+} from "./interfaces";
 
 import {
   ConsentRecord,
@@ -23,10 +23,10 @@ import {
   AuditEvent,
   IntegrationEvent,
   ClinicalAnswer,
-  Patient
-} from '../types';
+  Patient,
+} from "../types";
 
-import { CLINICAL_QUESTIONS } from '../data/questionBank';
+import { CLINICAL_QUESTIONS } from "../data/questionBank";
 import {
   DEMO_DOCUMENTS,
   DEMO_MEDICATIONS,
@@ -35,13 +35,15 @@ import {
   DEMO_ALERTS,
   DEMO_CLINICAL_SUMMARY,
   DEMO_CONSENTS,
-  DEMO_INITIAL_AUDIT
-} from '../data/demoData';
+  DEMO_INITIAL_AUDIT,
+} from "../data/demoData";
 
 // In-memory persistent stores for session state
 let auditEventsStore: AuditEvent[] = [...DEMO_INITIAL_AUDIT];
 let alertsStore: ClinicalAlert[] = [...DEMO_ALERTS];
-let summaryStore: ClinicalSummary = JSON.parse(JSON.stringify(DEMO_CLINICAL_SUMMARY));
+let summaryStore: ClinicalSummary = JSON.parse(
+  JSON.stringify(DEMO_CLINICAL_SUMMARY),
+);
 let consentsStore: ConsentRecord[] = [...DEMO_CONSENTS];
 let documentsStore: MedicalDocument[] = [...DEMO_DOCUMENTS];
 let timelineStore: TimelineEvent[] = [...DEMO_TIMELINE];
@@ -62,7 +64,7 @@ export class DemoAbhaService implements IAbhaService {
   }
 
   validateFormat(abhaId: string): { isValid: boolean; error?: string } {
-    const cleaned = abhaId.replace(/[\s-]/g, '');
+    const cleaned = abhaId.replace(/[\s-]/g, "");
     // Standard ABHA number is 14 digits or ABHA address format like name@abdm
     if (/^\d{14}$/.test(cleaned)) {
       return { isValid: true };
@@ -72,49 +74,50 @@ export class DemoAbhaService implements IAbhaService {
     }
     return {
       isValid: false,
-      error: 'Please enter a valid 14-digit ABHA Number (e.g. 91-4521-8890-3321) or ABHA Address (e.g. ananya@abdm).'
+      error:
+        "Please enter a valid 14-digit ABHA Number (e.g. 91-4521-8890-3321) or ABHA Address (e.g. ananya@abdm).",
     };
   }
 
-  async verifyAbha(
-  abhaId: string
-): Promise<{
-  success: boolean;
-  isSandbox: boolean;
-  patientName?: string;
-  error?: string;
-}> {
-  try {
-    const response = await fetch('http://localhost:8000/api/abha/verify', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        abhaId: abhaId.trim()
-      })
-    });
+  async verifyAbha(abhaId: string): Promise<{
+    success: boolean;
+    isSandbox: boolean;
+    patientName?: string;
+    error?: string;
+  }> {
+    try {
+      const response = await fetch("http://localhost:8000/api/abha/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          abhaId: abhaId.trim(),
+        }),
+      });
 
-    const result = await response.json();
+      const result = await response.json();
 
-    return result;
-  } catch (error) {
-    console.error('ABHA verification error:', error);
+      return result;
+    } catch (error) {
+      console.error("ABHA verification error:", error);
 
-    return {
-      success: false,
-      isSandbox: true,
-      error: 'Unable to connect to ABHA verification service.'
-    };
+      return {
+        success: false,
+        isSandbox: true,
+        error: "Unable to connect to ABHA verification service.",
+      };
+    }
   }
-}
 
   getOfficialCreateUrl(): string {
     const configuredUrl = (import.meta as any).env?.VITE_ABHA_CREATE_URL;
-    return configuredUrl || 'https://abha.abdm.gov.in/abha/v3/register';
+    return configuredUrl || "https://abha.abdm.gov.in/abha/v3/register";
   }
 
-  async linkHealthRecords(_abhaId: string): Promise<{ success: boolean; recordsCount: number }> {
+  async linkHealthRecords(
+    _abhaId: string,
+  ): Promise<{ success: boolean; recordsCount: number }> {
     await new Promise((resolve) => setTimeout(resolve, 800));
     return { success: true, recordsCount: 3 };
   }
@@ -122,16 +125,23 @@ export class DemoAbhaService implements IAbhaService {
 
 // 2. CONSENT SERVICE ADAPTER
 export class DemoConsentService implements IConsentService {
-  async grantConsent(patientId: string, type: 'HISTORY_CAPTURE' | 'DOCUMENT_DIGITIZATION' | 'STAFF_SHARING', language: string): Promise<ConsentRecord> {
+  async grantConsent(
+    patientId: string,
+    type: "HISTORY_CAPTURE" | "DOCUMENT_DIGITIZATION" | "STAFF_SHARING",
+    language: string,
+  ): Promise<ConsentRecord> {
     const titles = {
-      HISTORY_CAPTURE: 'Clinical History Capture & Transcription',
-      DOCUMENT_DIGITIZATION: 'Medical Document OCR & Entity Extraction',
-      STAFF_SHARING: 'Sharing with Treating Clinical Team'
+      HISTORY_CAPTURE: "Clinical History Capture & Transcription",
+      DOCUMENT_DIGITIZATION: "Medical Document OCR & Entity Extraction",
+      STAFF_SHARING: "Sharing with Treating Clinical Team",
     };
     const descriptions = {
-      HISTORY_CAPTURE: 'Permission to capture conversational responses via voice and touch to build a structured pre-consultation summary.',
-      DOCUMENT_DIGITIZATION: 'Permission to scan, normalize, and extract medical entities from uploaded prescriptions and lab reports.',
-      STAFF_SHARING: 'Permission to share structured summary, timeline, and attention items with the attending physician and OPD triage staff.'
+      HISTORY_CAPTURE:
+        "Permission to capture conversational responses via voice and touch to build a structured pre-consultation summary.",
+      DOCUMENT_DIGITIZATION:
+        "Permission to scan, normalize, and extract medical entities from uploaded prescriptions and lab reports.",
+      STAFF_SHARING:
+        "Permission to share structured summary, timeline, and attention items with the attending physician and OPD triage staff.",
     };
 
     const newConsent: ConsentRecord = {
@@ -140,63 +150,81 @@ export class DemoConsentService implements IConsentService {
       type,
       title: titles[type],
       description: descriptions[type],
-      status: 'GRANTED',
-      version: '2026.1',
+      status: "GRANTED",
+      version: "2026.1",
       language,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     // Replace if exists
-    consentsStore = consentsStore.filter(c => !(c.patientId === patientId && c.type === type));
+    consentsStore = consentsStore.filter(
+      (c) => !(c.patientId === patientId && c.type === type),
+    );
     consentsStore.push(newConsent);
     return newConsent;
   }
 
-  async revokeConsent(patientId: string, consentId: string): Promise<ConsentRecord> {
-    const item = consentsStore.find(c => c.consentId === consentId);
-    if (!item) throw new Error('Consent record not found');
-    item.status = 'REVOKED';
+  async revokeConsent(
+    patientId: string,
+    consentId: string,
+  ): Promise<ConsentRecord> {
+    const item = consentsStore.find((c) => c.consentId === consentId);
+    if (!item) throw new Error("Consent record not found");
+    item.status = "REVOKED";
     item.timestamp = new Date().toISOString();
     return item;
   }
 
   async getConsents(patientId: string): Promise<ConsentRecord[]> {
-    return consentsStore.filter(c => c.patientId === patientId || c.patientId === 'pt_ananya_01');
+    return consentsStore.filter(
+      (c) => c.patientId === patientId || c.patientId === "pt_ananya_01",
+    );
   }
 
   async hasAllRequiredConsents(patientId: string): Promise<boolean> {
     const userConsents = await this.getConsents(patientId);
-    const granted = userConsents.filter(c => c.status === 'GRANTED').map(c => c.type);
+    const granted = userConsents
+      .filter((c) => c.status === "GRANTED")
+      .map((c) => c.type);
     return (
-      granted.includes('HISTORY_CAPTURE') &&
-      granted.includes('DOCUMENT_DIGITIZATION') &&
-      granted.includes('STAFF_SHARING')
+      granted.includes("HISTORY_CAPTURE") &&
+      granted.includes("DOCUMENT_DIGITIZATION") &&
+      granted.includes("STAFF_SHARING")
     );
   }
 }
 
 // 3. OCR SERVICE ADAPTER
 export class DemoOcrService implements IOcrService {
-  private allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+  private allowedTypes = [
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+  ];
   private maxSizeBytes = 15 * 1024 * 1024; // 15MB
 
   validateFile(file: File): { isValid: boolean; error?: string } {
     if (!this.allowedTypes.includes(file.type)) {
       return {
         isValid: false,
-        error: `Unsupported file format (${file.type || 'unknown'}). Please upload a PDF, PNG, JPG, or WEBP document.`
+        error: `Unsupported file format (${file.type || "unknown"}). Please upload a PDF, PNG, JPG, or WEBP document.`,
       };
     }
     if (file.size > this.maxSizeBytes) {
       return {
         isValid: false,
-        error: `File exceeds the 15MB limit (current: ${(file.size / (1024 * 1024)).toFixed(1)}MB). Please upload a smaller file.`
+        error: `File exceeds the 15MB limit (current: ${(file.size / (1024 * 1024)).toFixed(1)}MB). Please upload a smaller file.`,
       };
     }
     return { isValid: true };
   }
 
-  async processDocument(file: File, category: string, patientId: string): Promise<{
+  async processDocument(
+    file: File,
+    category: string,
+    patientId: string,
+  ): Promise<{
     document: MedicalDocument;
     entities: ExtractedEntity[];
     medications: Medication[];
@@ -217,66 +245,101 @@ export class DemoOcrService implements IOcrService {
       filename: file.name,
       fileType: file.type,
       fileSize: file.size,
-      category: (category as any) || 'Prescription',
+      category: (category as any) || "Prescription",
       uploadedAt: new Date().toISOString(),
-      processingStatus: 'Extracted',
+      processingStatus: "Extracted",
       confidence: 94,
       extractedTextSnippet: `Extracted text from ${file.name}: Clinical diagnosis, prescription dosages, and laboratory parameters identified.`,
-      previewUrl: URL.createObjectURL(file)
+      previewUrl: URL.createObjectURL(file),
     };
 
     const entities: ExtractedEntity[] = [
       {
         id: `ent_${Date.now()}_1`,
         documentId: docId,
-        entityType: 'medication',
-        rawText: 'Tab. Metformin 500mg BD',
-        normalizedValue: 'Metformin 500mg twice daily',
+        entityType: "medication",
+        rawText: "Tab. Metformin 500mg BD",
+        normalizedValue: "Metformin 500mg twice daily",
         confidence: 96,
-        verificationStatus: 'AI Extracted',
+        verificationStatus: "AI Extracted",
         sourceReference: {
           id: `src_${docId}_1`,
-          type: 'Medical Document',
+          type: "Medical Document",
           title: file.name,
-          detail: 'Section Rx, Item #1',
+          detail: "Section Rx, Item #1",
           timestamp: new Date().toISOString(),
-          confidence: 96
+          confidence: 96,
         },
-        timestamp: new Date().toISOString()
-      }
+        timestamp: new Date().toISOString(),
+      },
     ];
 
     const medications: Medication[] = [
       {
         id: `med_${Date.now()}`,
-        name: 'Metformin Hydrochloride',
-        dosage: '500 mg',
-        frequency: 'Twice daily',
-        purpose: 'Glycemic management',
-        status: 'Active',
+        name: "Metformin Hydrochloride",
+        dosage: "500 mg",
+        frequency: "Twice daily",
+        purpose: "Glycemic management",
+        status: "Active",
         sourceReference: {
           id: `src_med_${docId}`,
-          type: 'Medical Document',
+          type: "Medical Document",
           title: file.name,
-          detail: 'Digitized from uploaded document',
+          detail: "Digitized from uploaded document",
           documentId: docId,
           confidence: 96,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         },
         confidence: 96,
-        verificationStatus: 'AI Extracted'
-      }
+        verificationStatus: "AI Extracted",
+      },
     ];
 
     const labResults: LabResult[] = [];
 
+    // Save document to backend database
+    try {
+      const response = await fetch(
+        "http://localhost:8000/api/medical-documents/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            patientId: Number(patientId),
+            filename: doc.filename,
+            fileType: doc.fileType,
+            fileSize: doc.fileSize,
+            category: doc.category,
+            processingStatus: doc.processingStatus,
+            confidence: doc.confidence,
+            extractedTextSnippet: doc.extractedTextSnippet,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to save document");
+      }
+
+      const savedDocument = await response.json();
+
+      // Use the PostgreSQL document ID
+      doc.id = String(savedDocument.id);
+    } catch (error) {
+      console.error("Medical document save error:", error);
+    }
+
+    // Keep local document for the current session
     documentsStore.push(doc);
 
     return {
       document: doc,
       entities,
       medications,
-      labResults
+      labResults,
     };
   }
 }
@@ -287,36 +350,47 @@ export class DemoVoiceService implements IVoiceService {
   private isListeningActive = false;
 
   isSupported(): boolean {
-    return typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+    return (
+      typeof window !== "undefined" &&
+      ("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
+    );
   }
 
-  startListening(language: string, onResult: (transcript: string) => void, onError: (err: string) => void): void {
+  startListening(
+    language: string,
+    onResult: (transcript: string) => void,
+    onError: (err: string) => void,
+  ): void {
     if (!this.isSupported()) {
-      onError('Speech recognition is not supported in this browser. Please use text or touch controls.');
+      onError(
+        "Speech recognition is not supported in this browser. Please use text or touch controls.",
+      );
       return;
     }
 
     try {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const SpeechRecognition =
+        (window as any).SpeechRecognition ||
+        (window as any).webkitSpeechRecognition;
       this.recognition = new SpeechRecognition();
       this.recognition.continuous = false;
       this.recognition.interimResults = true;
 
       // Language mapping
       const langMap: Record<string, string> = {
-        en: 'en-IN',
-        hi: 'hi-IN',
-        bn: 'bn-IN',
-        ta: 'ta-IN',
-        te: 'te-IN',
-        mr: 'mr-IN',
-        as: 'as-IN',
-        or: 'or-IN'
+        en: "en-IN",
+        hi: "hi-IN",
+        bn: "bn-IN",
+        ta: "ta-IN",
+        te: "te-IN",
+        mr: "mr-IN",
+        as: "as-IN",
+        or: "or-IN",
       };
-      this.recognition.lang = langMap[language] || 'en-IN';
+      this.recognition.lang = langMap[language] || "en-IN";
 
       this.recognition.onresult = (event: any) => {
-        let finalTranscript = '';
+        let finalTranscript = "";
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
             finalTranscript += event.results[i][0].transcript;
@@ -329,7 +403,11 @@ export class DemoVoiceService implements IVoiceService {
 
       this.recognition.onerror = (event: any) => {
         this.isListeningActive = false;
-        onError(event.error === 'not-allowed' ? 'Microphone permission was denied. You can continue smoothly using touch or text.' : `Voice recognition: ${event.error}`);
+        onError(
+          event.error === "not-allowed"
+            ? "Microphone permission was denied. You can continue smoothly using touch or text."
+            : `Voice recognition: ${event.error}`,
+        );
       };
 
       this.recognition.onend = () => {
@@ -339,7 +417,7 @@ export class DemoVoiceService implements IVoiceService {
       this.recognition.start();
       this.isListeningActive = true;
     } catch (e: any) {
-      onError('Unable to start voice input. Please use text.');
+      onError("Unable to start voice input. Please use text.");
     }
   }
 
@@ -355,27 +433,27 @@ export class DemoVoiceService implements IVoiceService {
   }
 
   async speak(text: string, language: string): Promise<void> {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     this.cancelSpeech();
 
     const utterance = new SpeechSynthesisUtterance(text);
     const langMap: Record<string, string> = {
-      en: 'en-IN',
-      hi: 'hi-IN',
-      bn: 'bn-IN',
-      ta: 'ta-IN',
-      te: 'te-IN',
-      mr: 'mr-IN',
-      as: 'as-IN'
+      en: "en-IN",
+      hi: "hi-IN",
+      bn: "bn-IN",
+      ta: "ta-IN",
+      te: "te-IN",
+      mr: "mr-IN",
+      as: "as-IN",
     };
-    utterance.lang = langMap[language] || 'en-IN';
+    utterance.lang = langMap[language] || "en-IN";
     utterance.rate = 0.95; // Slightly slower for clinical clarity
 
     window.speechSynthesis.speak(utterance);
   }
 
   cancelSpeech(): void {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
   }
@@ -383,7 +461,10 @@ export class DemoVoiceService implements IVoiceService {
 
 // 5. CLINICAL HISTORY SERVICE ADAPTER
 export class DemoClinicalHistoryService implements IClinicalHistoryService {
-  async getNextQuestion(currentAnswers: Record<string, string>, currentQuestionId?: string): Promise<any> {
+  async getNextQuestion(
+    currentAnswers: Record<string, string>,
+    currentQuestionId?: string,
+  ): Promise<any> {
     const applicable = CLINICAL_QUESTIONS.filter((q) => {
       if (q.condition) {
         return q.condition(currentAnswers);
@@ -395,7 +476,9 @@ export class DemoClinicalHistoryService implements IClinicalHistoryService {
       return applicable[0] || null;
     }
 
-    const currentIndex = applicable.findIndex(q => q.id === currentQuestionId);
+    const currentIndex = applicable.findIndex(
+      (q) => q.id === currentQuestionId,
+    );
     if (currentIndex >= 0 && currentIndex < applicable.length - 1) {
       return applicable[currentIndex + 1];
     }
@@ -407,41 +490,49 @@ export class DemoClinicalHistoryService implements IClinicalHistoryService {
     // In-memory state tracking
   }
 
-  async evaluateRedFlags(answers: Record<string, string>): Promise<ClinicalAlert[]> {
+  async evaluateRedFlags(
+    answers: Record<string, string>,
+  ): Promise<ClinicalAlert[]> {
     const newAlerts: ClinicalAlert[] = [];
-    const chief = answers['q_chief_complaint'];
-    const associated = answers['q_chest_associated'];
-    const radiation = answers['q_chest_radiation'];
+    const chief = answers["q_chief_complaint"];
+    const associated = answers["q_chest_associated"];
+    const radiation = answers["q_chest_radiation"];
 
-    if (chief === 'chest_discomfort' && (associated === 'dyspnea_sweating' || radiation === 'left_arm_jaw')) {
+    if (
+      chief === "chest_discomfort" &&
+      (associated === "dyspnea_sweating" || radiation === "left_arm_jaw")
+    ) {
       newAlerts.push({
         alertId: `alt_${Date.now()}_cardiac`,
-        patientId: 'pt_ananya_01',
-        trigger: 'Retrosternal Chest Discomfort with Exertional Dyspnea and Cold Sweating',
-        source: 'Patient Conversational Intake (Adaptive Q#3 & Q#4)',
+        patientId: "pt_ananya_01",
+        trigger:
+          "Retrosternal Chest Discomfort with Exertional Dyspnea and Cold Sweating",
+        source: "Patient Conversational Intake (Adaptive Q#3 & Q#4)",
         timestamp: new Date().toISOString(),
-        priority: 'CRITICAL',
-        status: 'Needs triage',
-        wording: 'High-priority attention item: Reported chest heaviness with dyspnea and diaphoresis. Clinical evaluation and priority ECG recommended.'
+        priority: "CRITICAL",
+        status: "Needs triage",
+        wording:
+          "High-priority attention item: Reported chest heaviness with dyspnea and diaphoresis. Clinical evaluation and priority ECG recommended.",
       });
     }
 
-    if (answers['q_mem_allergies'] === 'penicillin_allergy') {
+    if (answers["q_mem_allergies"] === "penicillin_allergy") {
       newAlerts.push({
         alertId: `alt_${Date.now()}_allergy`,
-        patientId: 'pt_ananya_01',
-        trigger: 'Reported Penicillin Allergy',
-        source: 'Patient Memory Reconstruction (Q#14)',
+        patientId: "pt_ananya_01",
+        trigger: "Reported Penicillin Allergy",
+        source: "Patient Memory Reconstruction (Q#14)",
         timestamp: new Date().toISOString(),
-        priority: 'HIGH',
-        status: 'Acknowledged',
-        wording: 'Reported drug allergy: Penicillin (urticaria / swelling). Avoid beta-lactam prescribing.'
+        priority: "HIGH",
+        status: "Acknowledged",
+        wording:
+          "Reported drug allergy: Penicillin (urticaria / swelling). Avoid beta-lactam prescribing.",
       });
     }
 
     // Merge into alertsStore
-    newAlerts.forEach(a => {
-      if (!alertsStore.some(existing => existing.trigger === a.trigger)) {
+    newAlerts.forEach((a) => {
+      if (!alertsStore.some((existing) => existing.trigger === a.trigger)) {
         alertsStore.unshift(a);
       }
     });
@@ -452,7 +543,11 @@ export class DemoClinicalHistoryService implements IClinicalHistoryService {
 
 // 6. TIMELINE SERVICE ADAPTER
 export class DemoTimelineService implements ITimelineService {
-  async generateTimeline(patientId: string, _documents: MedicalDocument[], _answers: Record<string, any>): Promise<TimelineEvent[]> {
+  async generateTimeline(
+    patientId: string,
+    _documents: MedicalDocument[],
+    _answers: Record<string, any>,
+  ): Promise<TimelineEvent[]> {
     await new Promise((resolve) => setTimeout(resolve, 500));
     return timelineStore;
   }
@@ -464,7 +559,7 @@ export class DemoSummaryService implements ISummaryService {
     _patientId: string,
     _answers: Record<string, any>,
     _documents: MedicalDocument[],
-    _timeline: TimelineEvent[]
+    _timeline: TimelineEvent[],
   ): Promise<ClinicalSummary> {
     await new Promise((resolve) => setTimeout(resolve, 800));
     return summaryStore;
@@ -475,17 +570,17 @@ export class DemoSummaryService implements ISummaryService {
     sectionKey: keyof ClinicalSummary,
     content: string,
     physicianName: string,
-    reason?: string
+    reason?: string,
   ): Promise<ClinicalSummary> {
     const section = summaryStore[sectionKey] as any;
-    if (section && typeof section === 'object') {
+    if (section && typeof section === "object") {
       section.content = content;
-      section.status = 'Edited';
+      section.status = "Edited";
       section.lastModifiedBy = physicianName;
       section.lastModifiedAt = new Date().toISOString();
       if (reason) section.reason = reason;
     }
-    summaryStore.status = 'PHYSICIAN_REVIEWED';
+    summaryStore.status = "PHYSICIAN_REVIEWED";
     summaryStore.reviewedAt = new Date().toISOString();
     summaryStore.reviewedBy = physicianName;
 
@@ -493,28 +588,32 @@ export class DemoSummaryService implements ISummaryService {
     auditEventsStore.unshift({
       eventId: `aud_${Date.now()}`,
       actor: physicianName,
-      actorRole: 'Physician',
+      actorRole: "Physician",
       action: `Edited clinical summary section: ${String(sectionKey)}`,
       timestamp: new Date().toISOString(),
       patientId: summaryStore.patientId,
-      metadata: { section: sectionKey, reason }
+      metadata: { section: sectionKey, reason },
     });
 
     return summaryStore;
   }
 
-  async confirmSummary(_summaryId: string, physicianName: string): Promise<ClinicalSummary> {
-    summaryStore.status = 'CONFIRMED';
+  async confirmSummary(
+    _summaryId: string,
+    physicianName: string,
+  ): Promise<ClinicalSummary> {
+    summaryStore.status = "CONFIRMED";
     summaryStore.reviewedAt = new Date().toISOString();
     summaryStore.reviewedBy = physicianName;
 
     auditEventsStore.unshift({
       eventId: `aud_${Date.now()}`,
       actor: physicianName,
-      actorRole: 'Physician',
-      action: 'Confirmed final clinical summary and accepted clinical responsibility',
+      actorRole: "Physician",
+      action:
+        "Confirmed final clinical summary and accepted clinical responsibility",
       timestamp: new Date().toISOString(),
-      patientId: summaryStore.patientId
+      patientId: summaryStore.patientId,
     });
 
     return summaryStore;
@@ -524,12 +623,19 @@ export class DemoSummaryService implements ISummaryService {
 // 8. ALERT SERVICE ADAPTER
 export class DemoAlertService implements IAlertService {
   async getActiveAlerts(patientId: string): Promise<ClinicalAlert[]> {
-    return alertsStore.filter(a => a.patientId === patientId || a.patientId === 'pt_ananya_01');
+    return alertsStore.filter(
+      (a) => a.patientId === patientId || a.patientId === "pt_ananya_01",
+    );
   }
 
-  async updateAlertStatus(alertId: string, status: ClinicalAlert['status'], reviewedBy: string, reason?: string): Promise<ClinicalAlert> {
-    const alert = alertsStore.find(a => a.alertId === alertId);
-    if (!alert) throw new Error('Alert not found');
+  async updateAlertStatus(
+    alertId: string,
+    status: ClinicalAlert["status"],
+    reviewedBy: string,
+    reason?: string,
+  ): Promise<ClinicalAlert> {
+    const alert = alertsStore.find((a) => a.alertId === alertId);
+    if (!alert) throw new Error("Alert not found");
     alert.status = status;
     alert.reviewedBy = reviewedBy;
     if (reason) alert.resolutionReason = reason;
@@ -537,10 +643,10 @@ export class DemoAlertService implements IAlertService {
     auditEventsStore.unshift({
       eventId: `aud_${Date.now()}`,
       actor: reviewedBy,
-      actorRole: 'Physician',
+      actorRole: "Physician",
       action: `Updated alert [${alert.trigger}] status to '${status}'`,
       timestamp: new Date().toISOString(),
-      metadata: { alertId, status, reason }
+      metadata: { alertId, status, reason },
     });
 
     return alert;
@@ -549,51 +655,60 @@ export class DemoAlertService implements IAlertService {
 
 // 9. HIS SERVICE ADAPTER (FHIR / EMR Simulation)
 export class DemoHisService implements IHisService {
-  async sendClinicalSummary(summary: ClinicalSummary, patient: Patient): Promise<IntegrationEvent> {
+  async sendClinicalSummary(
+    summary: ClinicalSummary,
+    patient: Patient,
+  ): Promise<IntegrationEvent> {
     await new Promise((resolve) => setTimeout(resolve, 900));
 
     // Structure FHIR-compatible payload
     const event: IntegrationEvent = {
       id: `int_${Date.now()}`,
-      target: 'HIS/EMR',
-      status: 'SIMULATED',
+      target: "HIS/EMR",
+      status: "SIMULATED",
       message: `Clinical summary for ${patient.name} (${patient.visitId}) successfully transmitted to hospital HIS simulation via FHIR Composition bundle.`,
       timestamp: new Date().toISOString(),
-      payloadSummary: `FHIR Bundle ID: fhir-comp-${summary.id} | Sections: ChiefComplaint, HPI, PMH, Meds, Timeline | Doctor: ${summary.reviewedBy || 'Dr. Priya Sen'}`
+      payloadSummary: `FHIR Bundle ID: fhir-comp-${summary.id} | Sections: ChiefComplaint, HPI, PMH, Meds, Timeline | Doctor: ${summary.reviewedBy || "Dr. Priya Sen"}`,
     };
 
-    summary.status = 'SENT_TO_HIS';
+    summary.status = "SENT_TO_HIS";
 
     auditEventsStore.unshift({
       eventId: `aud_${Date.now()}`,
-      actor: summary.reviewedBy || 'Dr. Priya Sen',
-      actorRole: 'Physician',
+      actor: summary.reviewedBy || "Dr. Priya Sen",
+      actorRole: "Physician",
       action: `Clinical summary sent to Hospital HIS (Integration Simulation)`,
       timestamp: new Date().toISOString(),
       patientId: patient.id,
       visitId: patient.visitId,
-      metadata: { bundleId: event.id }
+      metadata: { bundleId: event.id },
     });
 
     return event;
   }
 
-  async getIntegrationStatus(): Promise<{ connected: boolean; systemName: string; mode: 'Production' | 'Simulation' }> {
+  async getIntegrationStatus(): Promise<{
+    connected: boolean;
+    systemName: string;
+    mode: "Production" | "Simulation";
+  }> {
     return {
       connected: true,
-      systemName: 'CareLens Hospital EMR Gateway (FHIR R4)',
-      mode: 'Simulation'
+      systemName: "CareLens Hospital EMR Gateway (FHIR R4)",
+      mode: "Simulation",
     };
   }
 }
 
 // 10. AUDIT SERVICE ADAPTER
 export class DemoAuditService implements IAuditService {
-  async logEvent(event: Omit<AuditEvent, 'eventId' | 'timestamp'>): Promise<AuditEvent> {
+  async logEvent(
+    event: Omit<AuditEvent, "eventId" | "timestamp">,
+  ): Promise<AuditEvent> {
     const fullEvent: AuditEvent = {
       ...event,
       eventId: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
     auditEventsStore.unshift(fullEvent);
     return fullEvent;
@@ -601,6 +716,8 @@ export class DemoAuditService implements IAuditService {
 
   async getEvents(patientId?: string): Promise<AuditEvent[]> {
     if (!patientId) return auditEventsStore;
-    return auditEventsStore.filter(e => e.patientId === patientId || !e.patientId);
+    return auditEventsStore.filter(
+      (e) => e.patientId === patientId || !e.patientId,
+    );
   }
 }

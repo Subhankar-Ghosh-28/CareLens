@@ -10,6 +10,10 @@ from app.models.clinical_history import ClinicalHistory
 
 from app.api.routes.clinical_history import router as clinical_history_router
 
+from app.models.medical_document import MedicalDocument
+
+from app.api.routes.medical_documents import router as medical_document_router
+
 app = FastAPI(
     title="CareLens API",
     description="AI-Assisted Clinical Intake Platform",
@@ -35,6 +39,8 @@ app.include_router(patient_router)
 app.include_router(abha_router)
 
 app.include_router(clinical_history_router)
+
+app.include_router(medical_document_router)
 
 
 @app.get("/")

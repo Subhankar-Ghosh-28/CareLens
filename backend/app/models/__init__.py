@@ -1,0 +1,1 @@
+from app.models.medical_document import MedicalDocument

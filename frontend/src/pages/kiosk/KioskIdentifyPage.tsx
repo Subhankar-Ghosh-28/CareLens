@@ -53,6 +53,7 @@ export const KioskIdentifyPage: React.FC = () => {
 
     updatePatient({
       id: String(savedPatient.id),
+      databaseId: savedPatient.id,
       name: savedPatient.name,
       age: savedPatient.age,
       gender: savedPatient.gender,

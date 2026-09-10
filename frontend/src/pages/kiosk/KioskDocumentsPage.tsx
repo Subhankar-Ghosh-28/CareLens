@@ -40,7 +40,11 @@ export const KioskDocumentsPage: React.FC = () => {
     setErrorMsg(null);
 
     try {
-      const res = await ocrService.processDocument(file, 'Prescription', patient.id);
+      const res = await ocrService.processDocument(
+        file,
+        'Prescription',
+        String(patient.databaseId ?? patient.id),
+      );
       addUploadedDocument(res.document);
     } catch (err: any) {
       setErrorMsg('Could not process this document. Please try again or choose a preset.');
@@ -60,7 +64,11 @@ export const KioskDocumentsPage: React.FC = () => {
         type: 'application/pdf'
       });
       const cat = presetType === 'LAB_REPORT' ? 'Lab Report' : presetType === 'DISCHARGE_SUMMARY' ? 'Discharge Summary' : 'Prescription';
-      const res = await ocrService.processDocument(fakeFile, cat, patient.id);
+      const res = await ocrService.processDocument(
+        fakeFile,
+        cat,
+        String(patient.databaseId ?? patient.id),
+      );
       addUploadedDocument(res.document);
     } catch (err: any) {
       setErrorMsg('Failed to load sample document.');

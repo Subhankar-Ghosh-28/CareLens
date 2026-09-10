@@ -176,7 +176,7 @@ export const KioskHistoryPage: React.FC = () => {
 
     console.log("CARE LENS PATIENT ID:", patient?.id);
 
-    const databasePatientId = Number(patient.id);
+    const databasePatientId = patient.databaseId ?? Number(patient.id);
 
     if (!Number.isInteger(databasePatientId)) {
       console.error("Invalid database patient ID:", patient.id);

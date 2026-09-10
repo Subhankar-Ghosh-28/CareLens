@@ -214,7 +214,10 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
           abhaId: undefined,
         }));
 
-        setPatientQueue(realQueue);
+        setPatientQueue([...realQueue, ...initialQueue]);
+        if (realQueue.length > 0) {
+          setSelectedPatientId(realQueue[0].patientId);
+        }
       } catch (error) {
         console.error("Failed to load real patients:", error);
       }
@@ -223,7 +226,57 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
     loadRealPatients();
   }, []);
 
-  const [selectedPatientId, setSelectedPatientId] = useState<string>("1");
+  useEffect(() => {
+    const addSentPatientToQueue = async (event: Event) => {
+      const patientId = (event as CustomEvent<string>).detail;
+      if (!/^\d+$/.test(patientId)) return;
+
+      try {
+        const response = await fetch("http://localhost:8000/api/patients/");
+        if (!response.ok) throw new Error("Failed to fetch patients");
+
+        const patient = (await response.json()).find(
+          (item: any) => String(item.id) === patientId,
+        );
+        if (!patient) return;
+
+        const queueItem: ExtendedQueueItem = {
+          ...patient,
+          patientId,
+          patientName: patient.name,
+          name: patient.name,
+          visitId: `OPD-${patient.id}`,
+          chiefComplaint: "Clinical history pending",
+          priority: "NORMAL",
+          triageAcuity: "NORMAL",
+          status: "NEEDS_REVIEW",
+          summaryConfirmed: false,
+          historyStatus: "Pending",
+          abhaId: undefined,
+        };
+
+        setPatientQueue((prev) => [
+          queueItem,
+          ...prev.filter((item) => item.patientId !== patientId),
+        ]);
+        setSelectedPatientId(patientId);
+      } catch (error) {
+        console.error("Failed to add sent patient to doctor queue:", error);
+      }
+    };
+
+    window.addEventListener(
+      "carelens_patient_sent_to_doctor",
+      addSentPatientToQueue,
+    );
+    return () =>
+      window.removeEventListener(
+        "carelens_patient_sent_to_doctor",
+        addSentPatientToQueue,
+      );
+  }, []);
+
+  const [selectedPatientId, setSelectedPatientId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [priorityFilter, setPriorityFilter] = useState<
     "ALL" | "CRITICAL" | "HIGH" | "NORMAL"
@@ -237,15 +290,11 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     const loadClinicalHistory = async () => {
+      if (!/^\d+$/.test(selectedPatientId)) return;
+
       try {
-        const patientId = selectedPatientId;
-
-        if (!patientId || !/^\d+$/.test(patientId)) {
-          return;
-        }
-
         const response = await fetch(
-          `http://localhost:8000/api/clinical-history/${patientId}`,
+          `http://localhost:8000/api/clinical-history/${selectedPatientId}`,
         );
 
         if (!response.ok) {
@@ -253,35 +302,79 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
         }
 
         const history = await response.json();
+        const chiefComplaint =
+          history.find((item: any) =>
+            item.questionId?.toLowerCase().includes("chief"),
+          )?.answer || history[0]?.answer || "Clinical history pending";
 
-        if (!history || history.length === 0) {
-          return;
-        }
-
-        console.log("Clinical history loaded:", history);
-
-        const firstAnswer = history[0];
-
-        setActiveSummary((prev) => ({
+        setClinicalHistories((prev) => ({
           ...prev,
-          patientId,
-          chiefComplaint: {
-            ...prev.chiefComplaint,
-            statement: firstAnswer.answer,
-          },
-          historyOfPresentIllness: {
-            ...prev.historyOfPresentIllness,
-            narrative: history
-              .map((item: any) => `${item.question}: ${item.answer}`)
-              .join("\n"),
-          },
+          [selectedPatientId]: history,
         }));
+        setPatientQueue((prev) =>
+          prev.map((item) =>
+            item.patientId === selectedPatientId
+              ? {
+                  ...item,
+                  chiefComplaint,
+                  historyStatus: history.length > 0 ? "Complete" : "Pending",
+                }
+              : item,
+          ),
+        );
       } catch (error) {
-        console.error("Failed to load clinical history:", error);
+        console.error("Clinical history loading error:", error);
       }
     };
 
     loadClinicalHistory();
+  }, [selectedPatientId]);
+
+  const [patientDocuments, setPatientDocuments] = useState<
+    Record<string, MedicalDocument[]>
+  >({});
+
+  useEffect(() => {
+    const loadPatientDocuments = async () => {
+      try {
+        if (!selectedPatientId || !/^\d+$/.test(selectedPatientId)) return;
+
+        const response = await fetch(
+          `http://localhost:8000/api/medical-documents/${selectedPatientId}`,
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch medical documents");
+        }
+
+        const savedDocuments = await response.json();
+
+        const formattedDocuments: MedicalDocument[] = savedDocuments.map(
+          (doc: any) => ({
+            id: String(doc.id),
+            patientId: String(doc.patientId),
+            filename: doc.filename,
+            fileType: doc.fileType,
+            fileSize: doc.fileSize,
+            category: doc.category,
+            uploadedAt: doc.created_at,
+            processingStatus: doc.processingStatus,
+            confidence: doc.confidence,
+            extractedTextSnippet: doc.extractedTextSnippet,
+            ocrRawText: doc.extractedTextSnippet,
+          }),
+        );
+
+        setPatientDocuments((prev) => ({
+          ...prev,
+          [selectedPatientId]: formattedDocuments,
+        }));
+      } catch (error) {
+        console.error("Patient documents loading error:", error);
+      }
+    };
+
+    loadPatientDocuments();
   }, [selectedPatientId]);
 
   const initialAlerts: ExtendedAlertItem[] = DEMO_ALERTS.map((a) => ({
@@ -608,6 +701,26 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
     const history = clinicalHistories[id] || [];
 
     if (history.length === 0) {
+      if (/^\d+$/.test(id)) {
+        return {
+          patientId: id,
+          chiefComplaint: "Not reported",
+          historyOfPresentIllness: "No clinical history recorded.",
+          pastMedicalHistory: [],
+          pastSurgicalHistory: [],
+          currentMedications: [],
+          allergies: [],
+          ayushAssessment: {
+            prakriti: "",
+            agni: "",
+            koshtha: "",
+            notes: "",
+          },
+          auditTrail: [],
+          status: "NEEDS_REVIEW",
+        };
+      }
+
       return {
         patientId: id,
         chiefComplaint: activeSummary?.chiefComplaint?.statement || "",
@@ -631,11 +744,15 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
     const historyText = history
       .map((item: any) => `${item.question}: ${item.answer}`)
       .join("\n");
+    const chiefComplaint =
+      history.find((item: any) =>
+        item.questionId?.toLowerCase().includes("chief"),
+      )?.answer || history[0]?.answer || "Not reported";
 
     return {
       patientId: id,
 
-      chiefComplaint: history[0]?.answer || "Not reported",
+      chiefComplaint,
 
       historyOfPresentIllness: historyText,
 
@@ -668,30 +785,30 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const getTimelineByPatientId = (id: string) => {
-  const history = clinicalHistories[id] || [];
+    const history = clinicalHistories[id] || [];
 
-  return history.map((item: any, index: number) => ({
-    id: String(item.id || `history_${index}`),
-    patientId: id,
-    type: 'CLINICAL_HISTORY',
-    title: item.question,
-    description: item.answer,
-    timestamp: item.created_at || 'Patient Intake',
-    actor: 'Patient',
-  })) as TimelineEvent[];
-};
+    return history.map((item: any, index: number) => ({
+      id: String(item.id || `history_${index}`),
+      patientId: id,
+      type: "CLINICAL_HISTORY",
+      title: item.question,
+      description: item.answer,
+      timestamp: item.created_at || "Patient Intake",
+      actor: "Patient",
+    })) as TimelineEvent[];
+  };
 
   const getDocumentsByPatientId = (id: string) => {
-  // Documents will be connected to the backend in the next step.
-  // For real patients, don't show Ananya's demo documents.
-  if (/^\d+$/.test(id)) {
-    return (documents || []).filter(d => d.patientId === id);
-  }
+    // Real PostgreSQL patient
+    if (/^\d+$/.test(id)) {
+      return patientDocuments[id] || [];
+    }
 
-  return (documents || []).filter(
-    d => d.patientId === id || d.patientId === 'pt_ananya_01'
-  );
-};
+    // Demo patient
+    return (documents || []).filter(
+      (d) => d.patientId === id || d.patientId === "pt_ananya_01",
+    );
+  };
 
   const verifySummary = async (
     patientId: string,
