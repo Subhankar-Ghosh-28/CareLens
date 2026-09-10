@@ -1,0 +1,10 @@
+{
+  "name": "CareLens",
+  "description": "AI-Powered Pre-Consultation Clinical Intake Platform — History First. Better Care.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
