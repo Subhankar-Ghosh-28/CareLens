@@ -1,8 +1,10 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.core.database import engine, Base
 from app.api.routes.patients import router as patient_router
+from app.api.routes.abha import router as abha_router
 from app.models.patient import Patient
 app = FastAPI(
     title="CareLens API",
@@ -10,9 +12,22 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+    "http://localhost:3000",
+    "http://localhost:3001",
+],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 Base.metadata.create_all(bind=engine)
 
 app.include_router(patient_router)
+
+app.include_router(abha_router)
 
 
 @app.get("/")

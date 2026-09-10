@@ -17,10 +17,11 @@ def create_patient(
     db: Session = Depends(get_db)
 ):
     new_patient = Patient(
-        full_name=patient.full_name,
-        phone=patient.phone,
+        name=patient.name,
+        age=patient.age,
         gender=patient.gender,
-        date_of_birth=patient.date_of_birth
+        phone=patient.phone,
+        clinicalTrack=patient.clinicalTrack
     )
 
     db.add(new_patient)
