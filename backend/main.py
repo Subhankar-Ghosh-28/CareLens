@@ -1,13 +1,18 @@
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.core.database import engine
-
+from app.core.database import engine, Base
+from app.api.routes.patients import router as patient_router
+from app.models.patient import Patient
 app = FastAPI(
     title="CareLens API",
     description="AI-Assisted Clinical Intake Platform",
     version="1.0.0",
 )
+
+Base.metadata.create_all(bind=engine)
+
+app.include_router(patient_router)
 
 
 @app.get("/")
