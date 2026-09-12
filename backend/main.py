@@ -14,19 +14,25 @@ from app.models.medical_document import MedicalDocument
 
 from app.api.routes.medical_documents import router as medical_document_router
 
+import os
+
 app = FastAPI(
     title="CareLens API",
     description="AI-Assisted Clinical Intake Platform",
     version="1.0.0",
-    debug=True,
+    debug=os.getenv("DEBUG", "False").lower() in ("true", "1"),
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-    "http://localhost:3000",
-    "http://localhost:3001",
-],
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,9 +68,9 @@ def health_check():
             "database": "connected"
         }
 
-    except Exception as e:
+    except Exception:
         return {
             "status": "unhealthy",
             "database": "disconnected",
-            "error": str(e)
+            "error": "Database connection unavailable"
         }

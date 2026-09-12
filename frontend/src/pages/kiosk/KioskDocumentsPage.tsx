@@ -47,7 +47,7 @@ export const KioskDocumentsPage: React.FC = () => {
       );
       addUploadedDocument(res.document);
     } catch (err: any) {
-      setErrorMsg('Could not process this document. Please try again or choose a preset.');
+      setErrorMsg(err?.message || 'Could not process this document. Please verify the backend is running and try again, or choose a preset.');
     } finally {
       setIsProcessing(false);
     }

@@ -13,6 +13,9 @@ Validates:
 9. Clean teardown
 """
 
+import sys, os, pathlib
+sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
+
 import json
 import os
 import sys

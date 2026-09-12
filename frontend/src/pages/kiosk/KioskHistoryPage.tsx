@@ -177,6 +177,24 @@ export const KioskHistoryPage: React.FC = () => {
     const databasePatientId = patient.databaseId ?? Number(patient.id);
 
     if (!Number.isInteger(databasePatientId)) {
+      addInterviewAnswer({
+        questionId: currentQuestion.id,
+        category: currentQuestion.category,
+        questionText: getQuestionText(),
+        answer: finalAnswer,
+        timestamp: new Date().toISOString(),
+        modality: isRecording
+          ? "VOICE"
+          : selectedOptions.length > 0
+            ? "TOUCH"
+            : "TEXT",
+      });
+
+      if (currentIndex < allQuestions.length - 1) {
+        setCurrentIndex((prev) => prev + 1);
+      } else {
+        navigate("/kiosk/documents");
+      }
       return;
     }
 

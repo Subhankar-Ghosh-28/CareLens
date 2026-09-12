@@ -494,34 +494,57 @@ export class DemoClinicalHistoryService implements IClinicalHistoryService {
     answers: Record<string, string>,
   ): Promise<ClinicalAlert[]> {
     const newAlerts: ClinicalAlert[] = [];
-    const chief = answers["q_chief_complaint"];
-    const associated = answers["q_chest_associated"];
-    const radiation = answers["q_chest_radiation"];
+    const chief = (answers["q_chief_complaint"] || "").toLowerCase();
+    const associated = (answers["q_chest_associated"] || "").toLowerCase();
+    const radiation = (answers["q_chest_radiation"] || "").toLowerCase();
+    const feverAssoc = (answers["q_fever_associated"] || "").toLowerCase();
+    const allergies = (answers["q_mem_allergies"] || "").toLowerCase();
 
+    // 1. Acute Chest Pain / ACS
     if (
-      chief === "chest_discomfort" &&
-      (associated === "dyspnea_sweating" || radiation === "left_arm_jaw")
+      (chief.includes("chest") || chief.includes("chhati")) &&
+      (associated.includes("dyspnea") || associated.includes("sweating") || radiation.includes("left_arm") || associated.includes("breath"))
     ) {
       newAlerts.push({
         alertId: `alt_${Date.now()}_cardiac`,
-        patientId: "pt_ananya_01",
-        trigger:
-          "Retrosternal Chest Discomfort with Exertional Dyspnea and Cold Sweating",
-        source: "Patient Conversational Intake (Adaptive Q#3 & Q#4)",
+        patientId: "intake",
+        trigger: "Retrosternal Chest Discomfort with Dyspnea / Radiation",
+        source: "Patient Conversational Intake",
         timestamp: new Date().toISOString(),
         priority: "CRITICAL",
         status: "Needs triage",
         wording:
-          "High-priority attention item: Reported chest heaviness with dyspnea and diaphoresis. Clinical evaluation and priority ECG recommended.",
+          "High-priority attention item: Reported chest discomfort with dyspnea/diaphoresis. Clinical evaluation and priority ECG recommended.",
       });
     }
 
-    if (answers["q_mem_allergies"] === "penicillin_allergy") {
+    // 2. Severe Respiratory Distress
+    if (
+      feverAssoc.includes("severe_respiratory") ||
+      chief.includes("breath") ||
+      chief.includes("ushah") ||
+      associated.includes("breath")
+    ) {
+      newAlerts.push({
+        alertId: `alt_${Date.now()}_resp`,
+        patientId: "intake",
+        trigger: "Severe Breathing Difficulty / Shortness of Breath",
+        source: "Patient Conversational Intake",
+        timestamp: new Date().toISOString(),
+        priority: "CRITICAL",
+        status: "Needs triage",
+        wording:
+          "High-priority attention item: Patient reports significant shortness of breath. Airway and oxygen saturation check recommended.",
+      });
+    }
+
+    // 3. Drug Allergies
+    if (allergies.includes("penicillin")) {
       newAlerts.push({
         alertId: `alt_${Date.now()}_allergy`,
-        patientId: "pt_ananya_01",
+        patientId: "intake",
         trigger: "Reported Penicillin Allergy",
-        source: "Patient Memory Reconstruction (Q#14)",
+        source: "Patient Memory Reconstruction",
         timestamp: new Date().toISOString(),
         priority: "HIGH",
         status: "Acknowledged",
@@ -530,14 +553,29 @@ export class DemoClinicalHistoryService implements IClinicalHistoryService {
       });
     }
 
-    // Merge into alertsStore
+    // 4. Febrile infection with rigors
+    if (feverAssoc.includes("chills_myalgia") || chief.includes("rigors")) {
+      newAlerts.push({
+        alertId: `alt_${Date.now()}_fever`,
+        patientId: "intake",
+        trigger: "High-Grade Fever with Rigors",
+        source: "Patient Conversational Intake",
+        timestamp: new Date().toISOString(),
+        priority: "HIGH",
+        status: "Needs triage",
+        wording:
+          "Attention item: Patient reports high fever accompanied by rigors and chills.",
+      });
+    }
+
+    // Merge newly triggered alerts
     newAlerts.forEach((a) => {
       if (!alertsStore.some((existing) => existing.trigger === a.trigger)) {
         alertsStore.unshift(a);
       }
     });
 
-    return alertsStore;
+    return newAlerts.length > 0 ? newAlerts : alertsStore;
   }
 }
 
@@ -545,24 +583,280 @@ export class DemoClinicalHistoryService implements IClinicalHistoryService {
 export class DemoTimelineService implements ITimelineService {
   async generateTimeline(
     patientId: string,
-    _documents: MedicalDocument[],
-    _answers: Record<string, any>,
+    documents: MedicalDocument[],
+    answers: Record<string, any>,
   ): Promise<TimelineEvent[]> {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    return timelineStore;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    if (patientId === "pt_ananya_01") {
+      return timelineStore;
+    }
+
+    const currentYear = new Date().getFullYear();
+    const events: TimelineEvent[] = [];
+
+    // 1. Current chief complaint / intake event
+    const cc =
+      answers["q_chief_complaint"] ||
+      answers[Object.keys(answers).find((k) => k.toLowerCase().includes("chief")) || ""] ||
+      "OPD Clinical Intake";
+    events.push({
+      id: `tl_cc_${Date.now()}`,
+      patientId,
+      date: "Today",
+      year: currentYear,
+      title: "OPD Pre-Consultation Intake",
+      description: `Patient-reported primary concern: ${cc}`,
+      category: "Current Intake",
+      source: "Patient Intake Session",
+      sourceType: "Patient Conversation",
+      sourceReference: {
+        id: "ref_q_chief",
+        type: "Patient Conversation",
+        title: "Chief Complaint Intake",
+        questionId: "q_chief_complaint",
+        timestamp: new Date().toISOString(),
+        confidence: 95,
+      },
+      confidence: 95,
+      verificationStatus: "Needs Verification",
+    });
+
+    // 2. Past surgeries from interview
+    const surg = answers["q_mem_surgery"];
+    if (surg && !surg.toLowerCase().includes("none") && !surg.toLowerCase().includes("no")) {
+      events.push({
+        id: `tl_surg_${Date.now()}`,
+        patientId,
+        date: "Past History",
+        year: currentYear - 2,
+        title: "Prior Surgical Procedure",
+        description: `Patient reported: ${surg}`,
+        category: "Surgery",
+        source: "Patient Memory Reconstruction",
+        sourceType: "Patient Reported",
+        sourceReference: {
+          id: "ref_q_surg",
+          type: "Patient Reported",
+          title: "Prior Surgery Intake",
+          questionId: "q_mem_surgery",
+          timestamp: new Date().toISOString(),
+          confidence: 90,
+        },
+        confidence: 90,
+        verificationStatus: "Needs Verification",
+      });
+    }
+
+    // 3. Chronic conditions from interview
+    const chronic = answers["q_mem_chronic"];
+    if (chronic && !chronic.toLowerCase().includes("none") && !chronic.toLowerCase().includes("no")) {
+      events.push({
+        id: `tl_chron_${Date.now()}`,
+        patientId,
+        date: "Diagnosed Earlier",
+        year: currentYear - 3,
+        title: "Documented Chronic Condition",
+        description: `Patient reported: ${chronic}`,
+        category: "Diagnosis",
+        source: "Patient Memory Reconstruction",
+        sourceType: "Patient Reported",
+        sourceReference: {
+          id: "ref_q_chron",
+          type: "Patient Reported",
+          title: "Chronic Condition Intake",
+          questionId: "q_mem_chronic",
+          timestamp: new Date().toISOString(),
+          confidence: 90,
+        },
+        confidence: 90,
+        verificationStatus: "Needs Verification",
+      });
+    }
+
+    // 4. Events from uploaded documents
+    (documents || []).forEach((doc, idx) => {
+      const isRx = doc.category === "Prescription";
+      const isLab = doc.category === "Lab Report";
+      events.push({
+        id: `tl_doc_${doc.id || idx}`,
+        patientId,
+        date: doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : "Uploaded",
+        year: currentYear,
+        title: doc.title || doc.filename || "Uploaded Medical Document",
+        description: doc.extractedTextSnippet
+          ? `OCR Snippet: ${doc.extractedTextSnippet.slice(0, 100)}...`
+          : `Digitized record (${doc.category})`,
+        category: isRx ? "Medication" : isLab ? "Investigation" : "Hospitalization",
+        source: "Uploaded Document OCR",
+        sourceType: "Medical Document",
+        sourceReference: {
+          id: `ref_doc_${doc.id || idx}`,
+          type: "Medical Document",
+          title: doc.filename,
+          documentId: String(doc.id),
+          timestamp: new Date().toISOString(),
+          confidence: doc.confidence || 85,
+        },
+        confidence: doc.confidence || 85,
+        verificationStatus: "Needs Verification",
+      });
+    });
+
+    return events;
   }
 }
 
 // 7. SUMMARY SERVICE ADAPTER
 export class DemoSummaryService implements ISummaryService {
   async generateDraftSummary(
-    _patientId: string,
-    _answers: Record<string, any>,
-    _documents: MedicalDocument[],
-    _timeline: TimelineEvent[],
+    patientId: string,
+    answers: Record<string, any>,
+    documents: MedicalDocument[],
+    timeline: TimelineEvent[],
   ): Promise<ClinicalSummary> {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    return summaryStore;
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    if (patientId === "pt_ananya_01") {
+      return summaryStore;
+    }
+
+    const cc =
+      answers["q_chief_complaint"] ||
+      answers[Object.keys(answers).find((k) => k.toLowerCase().includes("chief")) || ""] ||
+      "Not reported in interview";
+
+    const hpiLines: string[] = [];
+    Object.entries(answers).forEach(([k, v]) => {
+      if (!k.includes("mem_") && !k.includes("ayush") && v) {
+        hpiLines.push(`${k}: ${v}`);
+      }
+    });
+    const hpi = hpiLines.length > 0 ? hpiLines.join("\n") : "Intake completed with no active symptoms reported.";
+
+    const chronic = answers["q_mem_chronic"];
+    const pmh = chronic && !chronic.includes("none") ? `Reported: ${chronic}` : "No chronic illnesses reported.";
+
+    const surg = answers["q_mem_surgery"];
+    const psh = surg && !surg.includes("none") ? `Reported: ${surg}` : "No prior surgeries reported.";
+
+    const medLines: string[] = [];
+    if (answers["q_mem_medications"] && !answers["q_mem_medications"].includes("none")) {
+      medLines.push(`Patient Reported: ${answers["q_mem_medications"]}`);
+    }
+    (documents || []).forEach((d) => {
+      (d.extractedData?.medications || []).forEach((m: any) => {
+        medLines.push(`Extracted from ${d.filename || d.title}: ${m.name} (${m.dosage || "As directed"})`);
+      });
+    });
+    const meds = medLines.length > 0 ? medLines.join("\n") : "No active medications reported or extracted.";
+
+    const allergies = answers["q_mem_allergies"] && !answers["q_mem_allergies"].includes("none")
+      ? `Reported Allergy: ${answers["q_mem_allergies"]}`
+      : "No known drug allergies reported.";
+
+    const docFindings = (documents || [])
+      .map((d) => `${d.filename} (${d.category}): ${d.extractedTextSnippet ? d.extractedTextSnippet.slice(0, 100) : "Extracted"}`)
+      .join("\n") || "No prior documents attached.";
+
+    const summary: ClinicalSummary = {
+      id: `sum_${patientId}_${Date.now()}`,
+      patientId,
+      status: "DRAFT",
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      chiefComplaint: {
+        title: "Chief Complaint",
+        content: cc,
+        isAiGenerated: false,
+        status: "Draft",
+        sourceReferences: [{
+          id: "ref_sum_cc",
+          type: "Patient Conversation",
+          title: "Chief Complaint",
+          questionId: "q_chief_complaint",
+          timestamp: new Date().toISOString(),
+          confidence: 95,
+        }],
+      },
+      historyOfPresentIllness: {
+        title: "History of Present Illness",
+        content: hpi,
+        isAiGenerated: true,
+        status: "Draft",
+        sourceReferences: [{
+          id: "ref_sum_hpi",
+          type: "Patient Conversation",
+          title: "HPI Intake",
+          timestamp: new Date().toISOString(),
+          confidence: 90,
+        }],
+      },
+      pastMedicalHistory: {
+        title: "Past Medical History",
+        content: pmh,
+        isAiGenerated: false,
+        status: "Draft",
+        sourceReferences: [],
+      },
+      pastSurgicalHistory: {
+        title: "Past Surgical History",
+        content: psh,
+        isAiGenerated: false,
+        status: "Draft",
+        sourceReferences: [],
+      },
+      medications: {
+        title: "Current Medications",
+        content: meds,
+        isAiGenerated: false,
+        status: "Draft",
+        sourceReferences: [],
+      },
+      allergies: {
+        title: "Allergies",
+        content: allergies,
+        isAiGenerated: false,
+        status: "Draft",
+        sourceReferences: [],
+      },
+      familyHistory: {
+        title: "Family History",
+        content: "Non-contributory / Not explicitly reported in OPD intake.",
+        isAiGenerated: false,
+        status: "Draft",
+        sourceReferences: [],
+      },
+      personalHistory: {
+        title: "Personal & Social History",
+        content: "General routine.",
+        isAiGenerated: false,
+        status: "Draft",
+        sourceReferences: [],
+      },
+      reviewOfSystems: {
+        title: "Review of Systems",
+        content: "Screening completed in kiosk intake.",
+        isAiGenerated: false,
+        status: "Draft",
+        sourceReferences: [],
+      },
+      previousInvestigations: {
+        title: "Previous Investigations & Uploaded Documents",
+        content: docFindings,
+        isAiGenerated: false,
+        status: "Draft",
+        sourceReferences: [],
+      },
+      alertsSummary: {
+        title: "Safety Alerts Summary",
+        content: "Explainable safety checks evaluated against clinical intake.",
+        isAiGenerated: false,
+        status: "Draft",
+        sourceReferences: [],
+      },
+      disclaimer: "CareLens Clinical Intake Summary is generated to assist healthcare professionals. Final diagnosis and medical treatment decisions rest with the licensed physician.",
+    };
+
+    return summary;
   }
 
   async updateSummarySection(

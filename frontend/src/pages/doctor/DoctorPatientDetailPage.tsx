@@ -634,6 +634,24 @@ export const DoctorPatientDetailPage: React.FC = () => {
                       {summary.ayushAssessment.koshtha || 'Not assessed'}
                     </div>
                   </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Pramana (Body Proportion)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.pramana || 'Not assessed'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Vaya (Life Stage)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.vaya || 'Not assessed'}
+                    </div>
+                  </div>
                 </div>
 
                 {summary.ayushAssessment.dietaryHabits && (
