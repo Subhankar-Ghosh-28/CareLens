@@ -21,7 +21,9 @@ export const KioskAbhaPage: React.FC = () => {
 
   // State: 'CHOICE' | 'ENTER_ABHA' | 'NO_ABHA_EXPLAIN' | 'RETURN_FROM_CREATION'
   const [viewState, setViewState] = useState<'CHOICE' | 'ENTER_ABHA' | 'NO_ABHA_EXPLAIN' | 'RETURN_FROM_CREATION'>('CHOICE');
-  const [abhaInput, setAbhaInput] = useState(patient.abhaId || '91-4521-8890-3321');
+  const [abhaInput, setAbhaInput] = useState(
+    patient.abhaId && patient.id !== 'pt_ananya_01' ? patient.abhaId : ''
+  );
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<{
     success: boolean;

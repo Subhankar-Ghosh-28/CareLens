@@ -126,6 +126,7 @@ export interface MedicalDocument {
     labResults: any[];
     diagnoses?: any[];
   };
+  ocrRawText?: string;
 }
 
 export interface ExtractedEntity {

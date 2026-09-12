@@ -174,12 +174,9 @@ export const KioskHistoryPage: React.FC = () => {
     const finalAnswer =
       textFallback.trim() || selectedOptions.join(", ") || "None reported";
 
-    console.log("CARE LENS PATIENT ID:", patient?.id);
-
     const databasePatientId = patient.databaseId ?? Number(patient.id);
 
     if (!Number.isInteger(databasePatientId)) {
-      console.error("Invalid database patient ID:", patient.id);
       return;
     }
 
@@ -204,20 +201,10 @@ export const KioskHistoryPage: React.FC = () => {
       );
 
       if (!response.ok) {
-        const errorBody = await response.text();
-
-        console.error(
-          "Clinical history API error:",
-          response.status,
-          errorBody,
-        );
-
         throw new Error(`Failed to save clinical history: ${response.status}`);
       }
 
-      const savedHistory = await response.json();
-
-      console.log("CLINICAL HISTORY SAVED:", savedHistory);
+      await response.json();
 
       addInterviewAnswer({
         questionId: currentQuestion.id,

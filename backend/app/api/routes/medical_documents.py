@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -5,6 +6,7 @@ from app.core.database import get_db
 from app.models.medical_document import MedicalDocument
 from app.models.patient import Patient
 from app.services.ocr import extract_document_text
+from app.services.extractor import extract_clinical_entities
 
 router = APIRouter(
     prefix="/api/medical-documents",
@@ -27,6 +29,7 @@ def detect_file_type(content: bytes) -> str | None:
 
 
 def serialize_document(document: MedicalDocument) -> dict:
+    extracted_data = extract_clinical_entities(document.extractedTextSnippet or "")
     return {
         "id": document.id,
         "patientId": document.patientId,
@@ -37,6 +40,7 @@ def serialize_document(document: MedicalDocument) -> dict:
         "processingStatus": document.processingStatus,
         "confidence": document.confidence,
         "extractedTextSnippet": document.extractedTextSnippet,
+        "extractedData": extracted_data,
         "created_at": document.created_at,
     }
 
@@ -73,7 +77,8 @@ async def upload_medical_document(
             detail="Only PNG, JPEG, and PDF medical documents are supported.",
         )
 
-    filename = uploaded_file.filename or "medical-document"
+    raw_filename = uploaded_file.filename or "medical-document"
+    filename = re.sub(r"[^a-zA-Z0-9_.-]", "_", os.path.basename(raw_filename))
     try:
         extracted_text, confidence = extract_document_text(content, file_type)
         status = "Extracted" if extracted_text else "Failed"

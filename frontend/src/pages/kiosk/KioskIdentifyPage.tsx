@@ -8,10 +8,20 @@ export const KioskIdentifyPage: React.FC = () => {
   const navigate = useNavigate();
   const { patient, updatePatient, setClinicalTrack } = usePatientSession();
 
-  const [name, setName] = useState(patient.name || 'Ananya Sharma');
-  const [age, setAge] = useState(String(patient.age || 42));
-  const [gender, setGender] = useState<'Female' | 'Male' | 'Other'>(patient.gender as any || 'Female');
-  const [phone, setPhone] = useState(patient.phone || '+91 98765 43210');
+  const [name, setName] = useState(
+    patient.name && patient.id !== 'pt_ananya_01' && patient.name !== 'Walk-in Patient'
+      ? patient.name
+      : ''
+  );
+  const [age, setAge] = useState(
+    patient.id !== 'pt_ananya_01' && patient.age ? String(patient.age) : '35'
+  );
+  const [gender, setGender] = useState<'Female' | 'Male' | 'Other'>((patient.gender as any) || 'Female');
+  const [phone, setPhone] = useState(
+    patient.phone && patient.id !== 'pt_ananya_01' && patient.phone !== '+91 98765 43210'
+      ? patient.phone
+      : ''
+  );
   const [track, setTrack] = useState<'MODERN_MEDICINE' | 'AYUSH'>(patient.clinicalTrack || 'MODERN_MEDICINE');
   const [error, setError] = useState<string | null>(null);
 

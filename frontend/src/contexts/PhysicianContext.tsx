@@ -61,9 +61,19 @@ export interface DoctorSummaryItem {
   allergies: string[];
   ayushAssessment?: {
     prakriti?: string;
+    vikriti?: string;
+    sara?: string;
+    samhanana?: string;
+    pramana?: string;
+    satmya?: string;
+    satva?: string;
     agni?: string;
+    aharaShakti?: string;
+    vyayamaShakti?: string;
+    vaya?: string;
     koshtha?: string;
     notes?: string;
+    dietaryHabits?: string;
   };
   auditTrail: Array<{
     id: string;
@@ -349,25 +359,30 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
 
         const savedDocuments = await response.json();
 
-        const formattedDocuments: MedicalDocument[] = savedDocuments.map(
+        const formattedDocuments: any[] = savedDocuments.map(
           (doc: any) => ({
             id: String(doc.id),
             patientId: String(doc.patientId),
+            title: doc.filename || `${doc.category || "Medical"} Document`,
+            fileName: doc.filename,
             filename: doc.filename,
             fileType: doc.fileType,
             fileSize: doc.fileSize,
             category: doc.category,
-            uploadedAt: doc.created_at,
+            documentType: doc.category,
+            uploadedAt: doc.created_at ? new Date(doc.created_at).toLocaleDateString() : "Uploaded",
             processingStatus: doc.processingStatus,
             confidence: doc.confidence,
+            confidenceScore: doc.confidence ? doc.confidence / 100 : 0.85,
             extractedTextSnippet: doc.extractedTextSnippet,
             ocrRawText: doc.extractedTextSnippet,
+            extractedData: doc.extractedData || { medications: [], labResults: [] },
           }),
         );
 
         setPatientDocuments((prev) => ({
           ...prev,
-          [selectedPatientId]: formattedDocuments,
+          [selectedPatientId]: formattedDocuments as any,
         }));
       } catch (error) {
         console.error("Patient documents loading error:", error);
@@ -392,6 +407,93 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
   }));
 
   const [alerts, setAlerts] = useState<ExtendedAlertItem[]>(initialAlerts);
+
+  // Dynamic explainable red flags evaluation for selected patient
+  useEffect(() => {
+    if (!/^\d+$/.test(selectedPatientId)) {
+      setAlerts(initialAlerts);
+      return;
+    }
+
+    const history = clinicalHistories[selectedPatientId] || [];
+    const docs = patientDocuments[selectedPatientId] || [];
+    const dynamicAlerts: ExtendedAlertItem[] = [];
+
+    // Rule 1: Acute chest symptoms / ACS screening
+    const chestItem = history.find(
+      (h: any) =>
+        h.answer?.toLowerCase().includes("chest_discomfort") ||
+        h.answer?.toLowerCase().includes("dyspnea_sweating") ||
+        h.answer?.toLowerCase().includes("left_arm") ||
+        h.answer?.toLowerCase().includes("sweating") ||
+        h.answer?.toLowerCase().includes("chhati me dard"),
+    );
+    if (chestItem) {
+      dynamicAlerts.push({
+        id: `rf_acs_${selectedPatientId}`,
+        alertId: `rf_acs_${selectedPatientId}`,
+        patientId: selectedPatientId,
+        title: "Acute Coronary Syndrome Screening Alert",
+        trigger: "Retrosternal discomfort with associated diaphoresis/radiation",
+        severity: "HIGH",
+        priority: "CRITICAL",
+        status: "Needs triage",
+        source: "Patient Conversational Intake",
+        timestamp: "Intake",
+        wording: "Reported retrosternal discomfort combined with dyspnea/sweating.",
+        description: "Reported retrosternal discomfort combined with dyspnea/sweating.",
+      });
+    }
+
+    // Rule 2: Reported drug allergy (e.g. Penicillin)
+    const allergyItem = history.find(
+      (h: any) =>
+        (h.questionId?.includes("allergy") || h.question?.toLowerCase().includes("allergic")) &&
+        !h.answer?.toLowerCase().includes("none") &&
+        !h.answer?.toLowerCase().includes("nkda"),
+    );
+    if (allergyItem) {
+      dynamicAlerts.push({
+        id: `rf_all_${selectedPatientId}`,
+        alertId: `rf_all_${selectedPatientId}`,
+        patientId: selectedPatientId,
+        title: "Documented Drug Allergy Alert",
+        trigger: allergyItem.answer,
+        severity: "HIGH",
+        priority: "HIGH",
+        status: "Needs triage",
+        source: "Patient Intake",
+        timestamp: "Intake",
+        wording: `Reported allergy to medication: ${allergyItem.answer}`,
+        description: `Reported allergy to medication: ${allergyItem.answer}`,
+      });
+    }
+
+    // Rule 3: Extracted abnormal document lab thresholds
+    docs.forEach((doc: any) => {
+      (doc.extractedData?.labResults || []).forEach((l: any, lIdx: number) => {
+        const numVal = parseFloat(l.value);
+        if (l.testName?.toLowerCase().includes("glucose") && numVal > 180) {
+          dynamicAlerts.push({
+            id: `rf_lab_glu_${selectedPatientId}_${lIdx}`,
+            alertId: `rf_lab_glu_${selectedPatientId}_${lIdx}`,
+            patientId: selectedPatientId,
+            title: "Elevated Glycemic Threshold",
+            trigger: `${l.testName}: ${l.value} ${l.unit}`,
+            severity: "HIGH",
+            priority: "HIGH",
+            status: "Needs triage",
+            source: "Uploaded Document",
+            timestamp: "Document OCR",
+            wording: `Uploaded lab report indicates elevated blood glucose: ${l.value} ${l.unit}`,
+            description: `Uploaded lab report indicates elevated blood glucose: ${l.value} ${l.unit}`,
+          });
+        }
+      });
+    });
+
+    setAlerts(dynamicAlerts);
+  }, [selectedPatientId, clinicalHistories, patientDocuments]);
 
   const initialDocuments: DoctorDocumentItem[] = [
     {
@@ -699,88 +801,261 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const getSummaryByPatientId = (id: string): DoctorSummaryItem | undefined => {
     const history = clinicalHistories[id] || [];
+    const docs = (patientDocuments[id] || []) as any[];
 
-    if (history.length === 0) {
-      if (/^\d+$/.test(id)) {
-        return {
-          patientId: id,
-          chiefComplaint: "Not reported",
-          historyOfPresentIllness: "No clinical history recorded.",
-          pastMedicalHistory: [],
-          pastSurgicalHistory: [],
-          currentMedications: [],
-          allergies: [],
-          ayushAssessment: {
-            prakriti: "",
-            agni: "",
-            koshtha: "",
-            notes: "",
-          },
-          auditTrail: [],
-          status: "NEEDS_REVIEW",
-        };
-      }
-
+    if (!/^\d+$/.test(id)) {
+      // Demo patient (Ananya Sharma)
       return {
         patientId: id,
-        chiefComplaint: activeSummary?.chiefComplaint?.statement || "",
+        chiefComplaint:
+          (activeSummary?.chiefComplaint as any)?.statement ||
+          activeSummary?.chiefComplaint?.content ||
+          "Chest discomfort and heaviness with sweating",
         historyOfPresentIllness:
-          activeSummary?.historyOfPresentIllness?.narrative || "",
-        pastMedicalHistory: [],
-        pastSurgicalHistory: [],
-        currentMedications: [],
-        allergies: [],
+          (activeSummary?.historyOfPresentIllness as any)?.narrative ||
+          activeSummary?.historyOfPresentIllness?.content ||
+          "Discomfort started yesterday evening, radiating to left arm with diaphoresis.",
+        pastMedicalHistory: [
+          "Type 2 Diabetes Mellitus (Diagnosed 2019)",
+          "Essential Hypertension (Diagnosed 2021)",
+        ],
+        pastSurgicalHistory: [
+          "Laparoscopic Appendectomy (2023, Apollo Hospitals)",
+        ],
+        currentMedications: [
+          {
+            id: "med_demo_1",
+            name: "Metformin 500mg",
+            dosage: "500 mg BD",
+            frequency: "Twice daily after meals",
+            confidenceScore: 0.96,
+            sourceType: "DOCUMENT",
+            sourceReference: "Prescription_DrNair_Cardiology_2025.pdf",
+            sourceId: "doc_rx_01",
+          },
+          {
+            id: "med_demo_2",
+            name: "Telmisartan 40mg",
+            dosage: "40 mg OD",
+            frequency: "Once daily morning",
+            confidenceScore: 0.94,
+            sourceType: "DOCUMENT",
+            sourceReference: "Prescription_DrNair_Cardiology_2025.pdf",
+            sourceId: "doc_rx_01",
+          },
+          {
+            id: "med_demo_3",
+            name: "Atorvastatin 10mg",
+            dosage: "10 mg HS",
+            frequency: "At bedtime",
+            confidenceScore: 0.92,
+            sourceType: "DOCUMENT",
+            sourceReference: "Prescription_DrNair_Cardiology_2025.pdf",
+            sourceId: "doc_rx_01",
+          },
+        ],
+        allergies: ["Penicillin / Beta-lactam antibiotics (Severe urticaria)"],
         ayushAssessment: {
-          prakriti: "",
-          agni: "",
-          koshtha: "",
-          notes: "",
+          prakriti: "Pitta-Vata Predominant",
+          agni: "Tikshnagni (Intense / Acidic)",
+          koshtha: "Madhyama (Regular)",
+          dietaryHabits: "Predominantly vegetarian, takes warm milk at night.",
         },
-        auditTrail: [],
+        auditTrail: (auditEvents || []).filter(
+          (e) => e.patientId === id || e.patientId === "pt_ananya_01",
+        ),
         status: activeSummary?.status || "NEEDS_REVIEW",
       };
     }
 
-    const historyText = history
-      .map((item: any) => `${item.question}: ${item.answer}`)
-      .join("\n");
+    // Real PostgreSQL Patient
+    const ccItem = history.find(
+      (item: any) =>
+        item.questionId?.toLowerCase().includes("chief") ||
+        item.question?.toLowerCase().includes("concern") ||
+        item.question?.toLowerCase().includes("problem"),
+    );
     const chiefComplaint =
-      history.find((item: any) =>
-        item.questionId?.toLowerCase().includes("chief"),
-      )?.answer || history[0]?.answer || "Not reported";
+      ccItem?.answer || (history.length > 0 ? history[0].answer : "Not reported");
+
+    const hpiItems = history.filter(
+      (item: any) =>
+        !item.questionId?.toLowerCase().includes("ayush") &&
+        !item.questionId?.toLowerCase().includes("mem_") &&
+        !item.questionId?.toLowerCase().includes("allergy"),
+    );
+    const historyText =
+      hpiItems.length > 0
+        ? hpiItems.map((item: any) => `${item.question}: ${item.answer}`).join("\n")
+        : history.length > 0
+          ? history.map((item: any) => `${item.question}: ${item.answer}`).join("\n")
+          : "No clinical history recorded.";
+
+    const pastMedical: string[] = [];
+    history
+      .filter(
+        (item: any) =>
+          item.questionId?.includes("chronic") ||
+          item.questionId?.includes("past_medical"),
+      )
+      .forEach((item: any) => {
+        if (item.answer && !item.answer.toLowerCase().includes("none")) {
+          pastMedical.push(item.answer);
+        }
+      });
+    docs.forEach((doc: any) => {
+      (doc.extractedData?.diagnoses || []).forEach((dx: string) => {
+        const entry = `${dx} (Extracted from: ${doc.title || doc.filename})`;
+        if (!pastMedical.includes(entry)) pastMedical.push(entry);
+      });
+    });
+
+    const pastSurgical: string[] = [];
+    history
+      .filter(
+        (item: any) =>
+          item.questionId?.includes("surg") ||
+          item.questionId?.includes("hospital"),
+      )
+      .forEach((item: any) => {
+        if (
+          item.answer &&
+          !item.answer.toLowerCase().includes("no") &&
+          !item.answer.toLowerCase().includes("none")
+        ) {
+          pastSurgical.push(item.answer);
+        }
+      });
+
+    const medicationsList: any[] = [];
+    history
+      .filter(
+        (item: any) =>
+          item.questionId?.includes("medication") ||
+          item.questionId?.includes("q_mem_med"),
+      )
+      .forEach((item: any, idx: number) => {
+        if (item.answer && !item.answer.toLowerCase().includes("none")) {
+          medicationsList.push({
+            id: `med_interview_${idx}`,
+            name: item.answer,
+            dosage: "Reported in interview",
+            frequency: "Daily regimen",
+            confidenceScore: 0.9,
+            sourceType: "PATIENT_INTERVIEW",
+            sourceReference: item.question,
+            sourceId: item.questionId,
+          });
+        }
+      });
+
+    docs.forEach((doc: any) => {
+      (doc.extractedData?.medications || []).forEach(
+        (m: any, mIdx: number) => {
+          medicationsList.push({
+            id: `med_doc_${doc.id}_${mIdx}`,
+            name: m.name,
+            dosage: m.dosage || "Standard dose",
+            frequency: m.frequency || "As directed",
+            confidenceScore: doc.confidenceScore || 0.85,
+            sourceType: "DOCUMENT",
+            sourceReference: doc.title || doc.filename,
+            sourceId: String(doc.id),
+          });
+        },
+      );
+    });
+
+    const allergiesList: string[] = [];
+    history
+      .filter(
+        (item: any) =>
+          item.questionId?.includes("allergy") ||
+          item.questionId?.includes("q_mem_allerg"),
+      )
+      .forEach((item: any) => {
+        if (
+          item.answer &&
+          !item.answer.toLowerCase().includes("none") &&
+          !item.answer.toLowerCase().includes("nkda")
+        ) {
+          allergiesList.push(`${item.answer} (Patient Reported)`);
+        }
+      });
+
+    const ayushItems = history.filter((item: any) =>
+      item.questionId?.includes("ayush"),
+    );
+    let ayushAssessment: any = undefined;
+    if (ayushItems.length > 0) {
+      ayushAssessment = {
+        prakriti:
+          ayushItems.find((i: any) => i.questionId?.includes("prakriti"))
+            ?.answer || "",
+        vikriti:
+          ayushItems.find((i: any) => i.questionId?.includes("vikriti"))
+            ?.answer || "",
+        sara:
+          ayushItems.find((i: any) => i.questionId?.includes("sara"))?.answer ||
+          "",
+        samhanana:
+          ayushItems.find((i: any) => i.questionId?.includes("samhanana"))
+            ?.answer || "",
+        pramana:
+          ayushItems.find((i: any) => i.questionId?.includes("pramana"))
+            ?.answer || "",
+        satmya:
+          ayushItems.find((i: any) => i.questionId?.includes("satmya"))
+            ?.answer || "",
+        satva:
+          ayushItems.find((i: any) => i.questionId?.includes("satva"))
+            ?.answer || "",
+        agni:
+          ayushItems.find(
+            (i: any) =>
+              i.questionId?.includes("ahara") ||
+              i.questionId?.includes("digestive"),
+          )?.answer || "",
+        aharaShakti:
+          ayushItems.find((i: any) => i.questionId?.includes("ahara"))
+            ?.answer || "",
+        vyayamaShakti:
+          ayushItems.find((i: any) => i.questionId?.includes("vyayama"))
+            ?.answer || "",
+        vaya:
+          ayushItems.find((i: any) => i.questionId?.includes("vaya"))?.answer ||
+          "",
+        koshtha:
+          ayushItems.find(
+            (i: any) =>
+              i.questionId?.includes("bowel") ||
+              i.questionId?.includes("koshtha"),
+          )?.answer || "",
+        dietaryHabits: "Structured AYUSH Intake",
+        notes: "Patient-reported Dashavidha Pariksha assessment",
+      };
+    }
 
     return {
       patientId: id,
-
       chiefComplaint,
-
       historyOfPresentIllness: historyText,
-
-      pastMedicalHistory: [],
-
-      pastSurgicalHistory: [],
-
-      currentMedications: [],
-
-      allergies: [],
-
-      ayushAssessment: {
-        prakriti: "",
-        agni: "",
-        koshtha: "",
-        notes: "",
-      },
-
+      pastMedicalHistory: pastMedical,
+      pastSurgicalHistory: pastSurgical,
+      currentMedications: medicationsList,
+      allergies: allergiesList,
+      ayushAssessment,
       auditTrail: history.map((item: any, index: number) => ({
         id: String(item.id || `history_${index}`),
         action: `Clinical history recorded: ${item.question}`,
-        timestamp: "Patient intake",
+        timestamp: item.created_at
+          ? new Date(item.created_at).toLocaleTimeString()
+          : "Patient intake",
         performedBy: "Patient",
         role: "Patient",
         reason: undefined,
       })),
-
-      status: activeSummary?.status || "NEEDS_REVIEW",
+      status: "NEEDS_REVIEW",
     };
   };
 

@@ -1,5 +1,28 @@
+import os
+import shutil
 from io import BytesIO
 from typing import Optional
+
+
+def _ensure_tesseract_configured(pytesseract_module):
+    """Ensure pytesseract has a valid path to the tesseract executable."""
+    env_cmd = os.getenv("TESSERACT_CMD")
+    if env_cmd and os.path.exists(env_cmd):
+        pytesseract_module.pytesseract.tesseract_cmd = env_cmd
+        return
+
+    if shutil.which("tesseract"):
+        return
+
+    candidates = [
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            pytesseract_module.pytesseract.tesseract_cmd = path
+            return
 
 
 def extract_document_text(content: bytes, file_type: str) -> tuple[str, Optional[int]]:
@@ -11,6 +34,8 @@ def extract_document_text(content: bytes, file_type: str) -> tuple[str, Optional
         raise RuntimeError(
             "OCR dependencies are unavailable. Install backend requirements and Tesseract."
         ) from error
+
+    _ensure_tesseract_configured(pytesseract)
 
     try:
         pytesseract.get_tesseract_version()
