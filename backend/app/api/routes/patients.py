@@ -5,6 +5,7 @@ from app.core.database import get_db
 from app.models.patient import Patient
 from app.models.clinical_history import ClinicalHistory
 from app.models.medical_document import MedicalDocument
+from app.models.consent import PatientConsent
 from app.schemas.patient import PatientCreate, PatientResponse
 from app.services.fhir import create_fhir_bundle
 
@@ -73,5 +74,11 @@ def get_patient_fhir(
         .order_by(MedicalDocument.id.asc())
         .all()
     )
+    consents = (
+        db.query(PatientConsent)
+        .filter(PatientConsent.patientId == patient_id)
+        .order_by(PatientConsent.id.asc())
+        .all()
+    )
 
-    return create_fhir_bundle(patient, history, documents)
+    return create_fhir_bundle(patient, history, documents, consents)

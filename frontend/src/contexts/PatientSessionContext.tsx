@@ -90,6 +90,9 @@ interface PatientSessionContextType {
     type: "HISTORY_CAPTURE" | "DOCUMENT_DIGITIZATION" | "STAFF_SHARING",
     lang?: string,
   ) => Promise<void>;
+  revokeConsent: (
+    type: "HISTORY_CAPTURE" | "DOCUMENT_DIGITIZATION" | "STAFF_SHARING",
+  ) => Promise<void>;
   hasRequiredConsents: boolean;
   endSession: (reason?: string) => Promise<void>;
   resetTimeoutWarning: () => void;
@@ -389,6 +392,13 @@ export const PatientSessionProvider: React.FC<{
     setAnswers({});
     setRecordedAnswers([]);
     setUploadedDocuments([]);
+    setConsents([]);
+    setConsent({
+      historyCapture: false,
+      documentDigitization: false,
+      staffSharing: false,
+      grantedAt: undefined,
+    });
     setIsSessionActive(true);
     setIsSessionTimedOut(false);
     setShowTimeoutWarning(false);
@@ -483,19 +493,69 @@ export const PatientSessionProvider: React.FC<{
     setUploadedDocuments((prev) => prev.filter((d) => d.id !== id));
   };
 
+  // Load real consents when a numeric database patient is loaded
+  useEffect(() => {
+    const pid = String(patient.databaseId ?? patient.id);
+    if (/^\d+$/.test(pid)) {
+      consentService
+        .getConsents(pid)
+        .then((records) => {
+          setConsents(records);
+          const granted = records
+            .filter((r) => r.status === "GRANTED")
+            .map((r) => r.type);
+          setConsent({
+            historyCapture: granted.includes("HISTORY_CAPTURE"),
+            documentDigitization: granted.includes("DOCUMENT_DIGITIZATION"),
+            staffSharing: granted.includes("STAFF_SHARING"),
+            grantedAt: records.find((r) => r.status === "GRANTED")?.timestamp,
+          });
+        })
+        .catch(() => {
+          // Keep current state on network failure
+        });
+    }
+  }, [patient.id, patient.databaseId]);
+
   const grantConsent = async (
     type: "HISTORY_CAPTURE" | "DOCUMENT_DIGITIZATION" | "STAFF_SHARING",
     lang: string = "en",
   ) => {
-    const record = await consentService.grantConsent(patient.id, type, lang);
+    const pid = String(patient.databaseId ?? patient.id);
+    const record = await consentService.grantConsent(pid, type, lang);
     setConsents((prev) => [...prev.filter((c) => c.type !== type), record]);
+
+    if (type === "HISTORY_CAPTURE") updateConsent({ historyCapture: true, grantedAt: record.timestamp });
+    if (type === "DOCUMENT_DIGITIZATION") updateConsent({ documentDigitization: true, grantedAt: record.timestamp });
+    if (type === "STAFF_SHARING") updateConsent({ staffSharing: true, grantedAt: record.timestamp });
 
     auditService.logEvent({
       actor: patient.name,
       actorRole: "Patient",
       action: `Consent granted for: ${type}`,
-      patientId: patient.id,
+      patientId: pid,
       metadata: { consentId: record.consentId },
+    });
+  };
+
+  const revokeConsent = async (
+    type: "HISTORY_CAPTURE" | "DOCUMENT_DIGITIZATION" | "STAFF_SHARING",
+  ) => {
+    const pid = String(patient.databaseId ?? patient.id);
+    const existing = consents.find((c) => c.type === type);
+    if (existing) {
+      const record = await consentService.revokeConsent(pid, existing.consentId);
+      setConsents((prev) => [...prev.filter((c) => c.type !== type), record]);
+    }
+    if (type === "HISTORY_CAPTURE") updateConsent({ historyCapture: false });
+    if (type === "DOCUMENT_DIGITIZATION") updateConsent({ documentDigitization: false });
+    if (type === "STAFF_SHARING") updateConsent({ staffSharing: false });
+
+    auditService.logEvent({
+      actor: patient.name,
+      actorRole: "Patient",
+      action: `Consent revoked for: ${type}`,
+      patientId: pid,
     });
   };
 
@@ -560,6 +620,7 @@ export const PatientSessionProvider: React.FC<{
         uploadDocument,
         removeDocument,
         grantConsent,
+        revokeConsent,
         hasRequiredConsents,
         endSession,
         resetTimeoutWarning,

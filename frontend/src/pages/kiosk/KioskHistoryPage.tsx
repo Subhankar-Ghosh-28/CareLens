@@ -33,7 +33,14 @@ export const KioskHistoryPage: React.FC = () => {
     interviewAnswers,
     addInterviewAnswer,
     addRedFlag,
+    consent,
   } = usePatientSession();
+
+  useEffect(() => {
+    if (!consent.historyCapture) {
+      navigate("/kiosk/consent");
+    }
+  }, [consent.historyCapture, navigate]);
 
   // Combine Modern Medicine & AYUSH questions based on clinical track
   const allQuestions =

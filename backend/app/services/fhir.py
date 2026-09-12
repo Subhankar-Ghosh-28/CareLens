@@ -23,6 +23,7 @@ def create_fhir_bundle(
     patient: Patient,
     history: List[ClinicalHistory],
     documents: List[MedicalDocument],
+    consents: Optional[List[Any]] = None,
 ) -> Dict[str, Any]:
     """
     Serialize a CareLens patient encounter into a FHIR R4 Document Bundle.
@@ -174,6 +175,38 @@ def create_fhir_bundle(
                         "note": [{"text": "Extracted from uploaded document via CareLens OCR"}],
                     }
                 })
+
+    # 6. Consent Resources
+    if consents:
+        for c in consents:
+            bundle_entries.append({
+                "resource": {
+                    "resourceType": "Consent",
+                    "id": f"consent-{c.id}",
+                    "status": "active" if c.status == "GRANTED" else "inactive",
+                    "scope": {
+                        "coding": [
+                            {
+                                "system": "http://terminology.hl7.org/CodeSystem/consentscope",
+                                "code": "patient-privacy",
+                            }
+                        ]
+                    },
+                    "category": [
+                        {
+                            "coding": [
+                                {
+                                    "system": "http://terminology.hl7.org/CodeSystem/consentcategorycodes",
+                                    "code": c.type.lower() if hasattr(c, "type") else "unknown",
+                                }
+                            ],
+                            "text": c.title if hasattr(c, "title") else "Patient Consent",
+                        }
+                    ],
+                    "patient": {"reference": patient_ref},
+                    "dateTime": c.created_at.isoformat() + "Z" if getattr(c, "created_at", None) else now_iso,
+                }
+            })
 
     # Wrap into Bundle
     return {

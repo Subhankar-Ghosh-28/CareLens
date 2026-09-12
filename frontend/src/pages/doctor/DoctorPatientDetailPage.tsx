@@ -37,6 +37,7 @@ export const DoctorPatientDetailPage: React.FC = () => {
     getSummaryByPatientId,
     getTimelineByPatientId,
     getDocumentsByPatientId,
+    getConsentsByPatientId,
     verifySummary,
     updateSummarySection,
     exportToHis,
@@ -48,6 +49,8 @@ export const DoctorPatientDetailPage: React.FC = () => {
   const summary = getSummaryByPatientId(patientId);
   const timeline = getTimelineByPatientId(patientId);
   const documents = getDocumentsByPatientId(patientId);
+  const consents = getConsentsByPatientId(patientId);
+  const grantedConsentCount = consents.filter((c) => c.status === 'GRANTED').length;
   const patientAlerts = alerts.filter(a => a.patientId === patientId);
 
   // Tabs
@@ -191,6 +194,15 @@ export const DoctorPatientDetailPage: React.FC = () => {
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-100 text-slate-700">
                     ABHA: {patient.abhaId}
+                  </span>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                      grantedConsentCount > 0
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                    }`}
+                  >
+                    Consent: {grantedConsentCount}/3 Granted
                   </span>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">

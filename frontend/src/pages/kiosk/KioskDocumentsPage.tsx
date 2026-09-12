@@ -19,7 +19,7 @@ import {
 
 export const KioskDocumentsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { uploadedDocuments, addUploadedDocument, removeUploadedDocument, patient } = usePatientSession();
+  const { uploadedDocuments, addUploadedDocument, removeUploadedDocument, patient, consent } = usePatientSession();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -28,6 +28,11 @@ export const KioskDocumentsPage: React.FC = () => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+
+    if (!consent.documentDigitization) {
+      setErrorMsg('Medical document digitization consent is required to process uploaded records. Please return to the consent agreement if you wish to grant permission.');
+      return;
+    }
 
     const file = files[0];
     // Check file size (15MB limit)
@@ -55,6 +60,11 @@ export const KioskDocumentsPage: React.FC = () => {
 
   // Preset demo document selector (handy for zero-friction kiosk testing)
   const handleAddPresetDoc = async (presetType: 'PRESCRIPTION' | 'LAB_REPORT' | 'DISCHARGE_SUMMARY') => {
+    if (!consent.documentDigitization) {
+      setErrorMsg('Medical document digitization consent is required to process records. Please return to the consent agreement if you wish to grant permission.');
+      return;
+    }
+
     setIsProcessing(true);
     setErrorMsg(null);
 

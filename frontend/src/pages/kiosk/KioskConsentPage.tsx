@@ -17,18 +17,21 @@ import {
 
 export const KioskConsentPage: React.FC = () => {
   const navigate = useNavigate();
-  const { consent, updateConsent } = usePatientSession();
+  const { consent, updateConsent, grantConsent, revokeConsent } = usePatientSession();
   const { currentLanguage, t } = useLanguage();
 
   const [historyCapture, setHistoryCapture] = useState(consent.historyCapture);
   const [documentDigitization, setDocumentDigitization] = useState(consent.documentDigitization);
   const [staffSharing, setStaffSharing] = useState(consent.staffSharing);
   const [readingAloud, setReadingAloud] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleToggle = (
     key: 'historyCapture' | 'documentDigitization' | 'staffSharing',
     val: boolean
   ) => {
+    setErrorMsg(null);
     if (key === 'historyCapture') setHistoryCapture(val);
     if (key === 'documentDigitization') setDocumentDigitization(val);
     if (key === 'staffSharing') setStaffSharing(val);
@@ -48,6 +51,7 @@ export const KioskConsentPage: React.FC = () => {
   };
 
   const handleGrantAll = () => {
+    setErrorMsg(null);
     setHistoryCapture(true);
     setDocumentDigitization(true);
     setStaffSharing(true);
@@ -59,14 +63,42 @@ export const KioskConsentPage: React.FC = () => {
     });
   };
 
-  const handleContinue = () => {
-    updateConsent({
-      historyCapture,
-      documentDigitization,
-      staffSharing,
-      grantedAt: new Date().toISOString()
-    });
-    navigate('/kiosk/history');
+  const handleContinue = async () => {
+    if (!historyCapture) {
+      setErrorMsg('Clinical history capture consent is required to proceed with the pre-consultation interview.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMsg(null);
+
+    try {
+      const lang = currentLanguage || 'en';
+
+      if (historyCapture) {
+        await grantConsent('HISTORY_CAPTURE', lang);
+      } else {
+        await revokeConsent('HISTORY_CAPTURE');
+      }
+
+      if (documentDigitization) {
+        await grantConsent('DOCUMENT_DIGITIZATION', lang);
+      } else {
+        await revokeConsent('DOCUMENT_DIGITIZATION');
+      }
+
+      if (staffSharing) {
+        await grantConsent('STAFF_SHARING', lang);
+      } else {
+        await revokeConsent('STAFF_SHARING');
+      }
+
+      navigate('/kiosk/history');
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Unable to record your consent preferences. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const atLeastOne = historyCapture || documentDigitization || staffSharing;
@@ -79,6 +111,14 @@ export const KioskConsentPage: React.FC = () => {
       onReadAloud={handleReadAloud}
     >
       <div className="max-w-2xl mx-auto w-full space-y-6">
+        {/* Error notification */}
+        {errorMsg && (
+          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
         {/* Consent Cards */}
         <div className="space-y-4">
           {/* 1. History Capture */}
@@ -200,11 +240,11 @@ export const KioskConsentPage: React.FC = () => {
         <div className="pt-2">
           <button
             type="button"
-            disabled={!atLeastOne}
+            disabled={!atLeastOne || isSubmitting}
             onClick={handleContinue}
             className="w-full py-4 px-6 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold text-base rounded-2xl shadow-lg shadow-teal-700/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
-            <span>Confirm Consent & Begin Interview</span>
+            <span>{isSubmitting ? "Recording Consent..." : "Confirm Consent & Begin Interview"}</span>
             <ArrowRight className="w-5 h-5" />
           </button>
         </div>

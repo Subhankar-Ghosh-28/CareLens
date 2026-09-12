@@ -25,10 +25,11 @@ import {
   IAuditService
 } from './interfaces';
 import { BackendOcrService } from './backendOcrService';
+import { BackendConsentService } from './backendConsentService';
 
 // Service Registry with deterministic adapters
 export const abhaService: IAbhaService = new DemoAbhaService();
-export const consentService: IConsentService = new DemoConsentService();
+export const consentService: IConsentService = new BackendConsentService();
 export const ocrService: IOcrService = new BackendOcrService();
 export const voiceService: IVoiceService = new DemoVoiceService();
 export const clinicalHistoryService: IClinicalHistoryService = new DemoClinicalHistoryService();

@@ -14,6 +14,9 @@ from app.models.medical_document import MedicalDocument
 
 from app.api.routes.medical_documents import router as medical_document_router
 
+from app.models.consent import PatientConsent
+from app.api.routes.consents import router as consent_router
+
 import os
 
 app = FastAPI(
@@ -47,6 +50,8 @@ app.include_router(abha_router)
 app.include_router(clinical_history_router)
 
 app.include_router(medical_document_router)
+
+app.include_router(consent_router)
 
 
 @app.get("/")

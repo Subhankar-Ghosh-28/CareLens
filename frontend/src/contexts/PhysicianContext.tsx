@@ -8,6 +8,7 @@ import {
   Patient,
   TimelineEvent,
   MedicalDocument,
+  ConsentRecord,
 } from "../types";
 import {
   DEMO_PATIENTS_LIST,
@@ -17,12 +18,14 @@ import {
   DEMO_DOCUMENTS,
   DEMO_TIMELINE,
   DEMO_INITIAL_AUDIT,
+  DEMO_CONSENTS,
 } from "../data/demoData";
 import {
   summaryService,
   hisService,
   alertService,
   auditService,
+  consentService,
 } from "../services";
 
 export interface DoctorDocumentItem {
@@ -150,6 +153,7 @@ interface PhysicianContextType {
   getSummaryByPatientId: (id: string) => DoctorSummaryItem | undefined;
   getTimelineByPatientId: (id: string) => TimelineEvent[];
   getDocumentsByPatientId: (id: string) => DoctorDocumentItem[];
+  getConsentsByPatientId: (id: string) => ConsentRecord[];
   verifySummary: (patientId: string, physicianName: string) => Promise<void>;
   updateSummarySection: (
     patientId: string,
@@ -390,6 +394,28 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     loadPatientDocuments();
+  }, [selectedPatientId]);
+
+  const [patientConsents, setPatientConsents] = useState<
+    Record<string, ConsentRecord[]>
+  >({});
+
+  useEffect(() => {
+    const loadPatientConsents = async () => {
+      try {
+        if (!selectedPatientId || !/^\d+$/.test(selectedPatientId)) return;
+
+        const records = await consentService.getConsents(selectedPatientId);
+        setPatientConsents((prev) => ({
+          ...prev,
+          [selectedPatientId]: records,
+        }));
+      } catch (error) {
+        console.error("Patient consents loading error:", error);
+      }
+    };
+
+    loadPatientConsents();
   }, [selectedPatientId]);
 
   const initialAlerts: ExtendedAlertItem[] = DEMO_ALERTS.map((a) => ({
@@ -1085,6 +1111,18 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
 
+  const getConsentsByPatientId = (id: string): ConsentRecord[] => {
+    // Real PostgreSQL patient
+    if (/^\d+$/.test(id)) {
+      return patientConsents[id] || [];
+    }
+
+    // Demo patient
+    return DEMO_CONSENTS.filter(
+      (c) => c.patientId === id || c.patientId === "pt_ananya_01",
+    );
+  };
+
   const verifySummary = async (
     patientId: string,
     physicianName: string,
@@ -1159,6 +1197,7 @@ export const PhysicianProvider: React.FC<{ children: React.ReactNode }> = ({
         getSummaryByPatientId,
         getTimelineByPatientId,
         getDocumentsByPatientId,
+        getConsentsByPatientId,
         verifySummary,
         updateSummarySection,
         exportToHis,

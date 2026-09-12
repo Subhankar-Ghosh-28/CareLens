@@ -244,17 +244,98 @@ def run_all_tests():
         assert res.get("success") is False, "Invalid ABHA incorrectly accepted"
         print("[PASS] 10. ABHA format validation & sandbox distinction verified")
 
+        # 11. Consent Management Endpoints
+        # 11a. Check initial consent status for new patient (all false)
+        status, res = http_request(f"/api/consents/{test_patient_id}/status")
+        assert status == 200, f"Consent status check failed: {status}"
+        assert res.get("hasAllRequired") is False, "Initial hasAllRequired must be False"
+        assert res.get("consents", {}).get("HISTORY_CAPTURE") is False, "Initial HISTORY_CAPTURE must be False"
+        assert res.get("consents", {}).get("DOCUMENT_DIGITIZATION") is False, "Initial DOCUMENT_DIGITIZATION must be False"
+        assert res.get("consents", {}).get("STAFF_SHARING") is False, "Initial STAFF_SHARING must be False"
+
+        # 11b. Grant consents
+        status, res = http_request("/api/consents/grant", method="POST", data={
+            "patientId": test_patient_id,
+            "type": "HISTORY_CAPTURE",
+            "title": "Clinical History Intake Consent",
+            "description": "Permission to record clinical answers",
+            "version": "1.0",
+            "language": "en"
+        })
+        assert status == 200, f"Grant HISTORY_CAPTURE failed: {status}"
+        assert res.get("status") == "GRANTED", "Status not GRANTED"
+        assert res.get("type") == "HISTORY_CAPTURE", "Type mismatch"
+
+        status, res = http_request("/api/consents/grant", method="POST", data={
+            "patientId": test_patient_id,
+            "type": "DOCUMENT_DIGITIZATION",
+            "title": "Document OCR Digitization Consent",
+            "version": "1.0",
+            "language": "en"
+        })
+        assert status == 200, f"Grant DOCUMENT_DIGITIZATION failed: {status}"
+
+        status, res = http_request("/api/consents/grant", method="POST", data={
+            "patientId": test_patient_id,
+            "type": "STAFF_SHARING",
+            "title": "Care Team Data Sharing Consent",
+            "version": "1.0",
+            "language": "en"
+        })
+        assert status == 200, f"Grant STAFF_SHARING failed: {status}"
+
+        # 11c. Verify updated status
+        status, res = http_request(f"/api/consents/{test_patient_id}/status")
+        assert status == 200, f"Updated status check failed: {status}"
+        assert res.get("hasAllRequired") is True, "hasAllRequired not True after granting all"
+        assert res.get("consents", {}).get("HISTORY_CAPTURE") is True, "HISTORY_CAPTURE not True after grant"
+        assert res.get("consents", {}).get("DOCUMENT_DIGITIZATION") is True, "DOCUMENT_DIGITIZATION not True after grant"
+        assert res.get("consents", {}).get("STAFF_SHARING") is True, "STAFF_SHARING not True after grant"
+
+        # 11d. Retrieve consent records
+        status, res = http_request(f"/api/consents/{test_patient_id}")
+        assert status == 200, f"Consent records retrieval failed: {status}"
+        assert len(res) == 3, f"Expected 3 consent records, got {len(res)}"
+
+        # 11e. Revoke a consent
+        status, res = http_request("/api/consents/revoke", method="POST", data={
+            "patientId": test_patient_id,
+            "type": "HISTORY_CAPTURE"
+        })
+        assert status == 200, f"Revoke consent failed: {status}"
+        assert res.get("status") == "REVOKED", "Status not REVOKED"
+
+        status, res = http_request(f"/api/consents/{test_patient_id}/status")
+        assert status == 200, f"Status check after revoke failed: {status}"
+        assert res.get("hasAllRequired") is False, "hasAllRequired must be False after revocation"
+        assert res.get("consents", {}).get("HISTORY_CAPTURE") is False, "HISTORY_CAPTURE should be False after revocation"
+        assert res.get("consents", {}).get("DOCUMENT_DIGITIZATION") is True, "DOCUMENT_DIGITIZATION should remain True"
+
+        # 11f. Non-existent patient rejection
+        status, res = http_request("/api/consents/999999/status")
+        assert status == 404, f"Expected 404 for non-existent patient, got {status}"
+
+        print("[PASS] 11. Consent management (grant, revoke, status check, records, 404 handling) verified")
+
+        # 12. Verify Consent resource in FHIR Bundle
+        status, res = http_request(f"/api/patients/{test_patient_id}/fhir")
+        assert status == 200, f"FHIR export failed: {status}"
+        resource_types = [entry["resource"]["resourceType"] for entry in res.get("entry", [])]
+        assert "Consent" in resource_types, "Consent resource missing in FHIR bundle"
+        print("[PASS] 12. FHIR Consent resource inclusion verified")
+
         print("==================================================")
-        print("ALL 10 AUTOMATED BACKEND TESTS PASSED SUCCESSFULLY!")
+        print("ALL 12 AUTOMATED BACKEND TESTS PASSED SUCCESSFULLY!")
         print("==================================================")
         return True
 
     finally:
-        # 11. Cleanup: delete synthetic test records directly via DB session
+        # 13. Cleanup: delete synthetic test records directly via DB session
         from app.core.database import SessionLocal
         from app.models.clinical_history import ClinicalHistory
         from app.models.medical_document import MedicalDocument
         from app.models.patient import Patient
+        from app.models.consent import PatientConsent
 
         db = SessionLocal()
         try:
@@ -263,6 +344,8 @@ def run_all_tests():
                 if doc:
                     db.delete(doc)
             if test_patient_id:
+                # Delete any consents for this patient
+                db.query(PatientConsent).filter(PatientConsent.patientId == test_patient_id).delete()
                 # Delete any documents for this patient
                 db.query(MedicalDocument).filter(MedicalDocument.patientId == test_patient_id).delete()
                 # Delete any clinical history for this patient
@@ -272,7 +355,7 @@ def run_all_tests():
                 if pt:
                     db.delete(pt)
             db.commit()
-            print("[CLEANUP] Synthetic test patient and records deleted from PostgreSQL")
+            print("[CLEANUP] Synthetic test patient, consents, and records deleted from PostgreSQL")
         except Exception as e:
             print(f"[CLEANUP ERROR]: {e}")
         finally:
