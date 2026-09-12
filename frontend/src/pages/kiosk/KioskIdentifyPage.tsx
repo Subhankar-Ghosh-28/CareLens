@@ -6,7 +6,7 @@ import { ArrowRight, User, Phone, Calendar, HeartPulse, Stethoscope, Sparkles } 
 
 export const KioskIdentifyPage: React.FC = () => {
   const navigate = useNavigate();
-  const { patient, updatePatient, setClinicalTrack } = usePatientSession();
+  const { patient, startSession, setClinicalTrack } = usePatientSession();
 
   const [name, setName] = useState(
     patient.name && patient.id !== 'pt_ananya_01' && patient.name !== 'Walk-in Patient'
@@ -61,7 +61,7 @@ export const KioskIdentifyPage: React.FC = () => {
 
     const savedPatient = await response.json();
 
-    updatePatient({
+    startSession({
       id: String(savedPatient.id),
       databaseId: savedPatient.id,
       name: savedPatient.name,

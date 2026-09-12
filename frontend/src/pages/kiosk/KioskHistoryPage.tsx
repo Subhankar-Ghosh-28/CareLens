@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   Sparkles,
   AlertTriangle,
+  AlertCircle,
   Info,
   Layers,
 } from "lucide-react";
@@ -30,6 +31,8 @@ export const KioskHistoryPage: React.FC = () => {
   const {
     patient,
     clinicalTrack,
+    answers,
+    saveAnswer,
     interviewAnswers,
     addInterviewAnswer,
     addRedFlag,
@@ -49,6 +52,7 @@ export const KioskHistoryPage: React.FC = () => {
       : CLINICAL_QUESTIONS;
 
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [textFallback, setTextFallback] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -225,11 +229,10 @@ export const KioskHistoryPage: React.FC = () => {
         },
       );
 
+      const result = await response.json();
       if (!response.ok) {
-        throw new Error(`Failed to save clinical history: ${response.status}`);
+        throw new Error(result.detail || `Failed to save clinical history: ${response.status}`);
       }
-
-      await response.json();
 
       addInterviewAnswer({
         questionId: currentQuestion.id,
@@ -249,27 +252,9 @@ export const KioskHistoryPage: React.FC = () => {
       } else {
         navigate("/kiosk/documents");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to save clinical history:", error);
-
-      addInterviewAnswer({
-        questionId: currentQuestion.id,
-        category: currentQuestion.category,
-        questionText: getQuestionText(),
-        answer: finalAnswer,
-        timestamp: new Date().toISOString(),
-        modality: isRecording
-          ? "VOICE"
-          : selectedOptions.length > 0
-            ? "TOUCH"
-            : "TEXT",
-      });
-
-      if (currentIndex < allQuestions.length - 1) {
-        setCurrentIndex((prev) => prev + 1);
-      } else {
-        navigate("/kiosk/documents");
-      }
+      setErrorMsg(error?.message || "Failed to record your answer. Please try again.");
     }
   };
 
@@ -304,6 +289,14 @@ export const KioskHistoryPage: React.FC = () => {
       onReadAloud={speakCurrentQuestion}
     >
       <div className="max-w-2xl mx-auto w-full space-y-6">
+        {/* Error notification banner */}
+        {errorMsg && (
+          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
         {/* Main Question Card */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 space-y-6 animate-in fade-in duration-150">
           {/* Category Pill & Audio Repeat */}

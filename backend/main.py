@@ -43,7 +43,7 @@ app.add_middleware(
 
 Base.metadata.create_all(bind=engine)
 
-# Ensure foreign key constraint exists on existing PostgreSQL tables
+# Ensure foreign key constraints exist on existing PostgreSQL tables
 try:
     with engine.begin() as conn:
         conn.execute(
@@ -56,6 +56,22 @@ try:
                     ) THEN
                         ALTER TABLE patient_consents
                         ADD CONSTRAINT fk_patient_consents_patient
+                        FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
+                    END IF;
+
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_clinical_history_patient'
+                    ) THEN
+                        ALTER TABLE clinical_history
+                        ADD CONSTRAINT fk_clinical_history_patient
+                        FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
+                    END IF;
+
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_medical_documents_patient'
+                    ) THEN
+                        ALTER TABLE medical_documents
+                        ADD CONSTRAINT fk_medical_documents_patient
                         FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
                     END IF;
                 END $$;

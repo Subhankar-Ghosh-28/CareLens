@@ -376,11 +376,13 @@ export const PatientSessionProvider: React.FC<{
 
   const startSession = (data?: Partial<Patient>) => {
     const newPt: Patient = {
-      id: `pt_${Date.now()}`,
+      id: data?.id || (data?.databaseId ? String(data.databaseId) : `pt_${Date.now()}`),
+      databaseId: data?.databaseId,
       name: data?.name || "Walk-in Patient",
       age: data?.age || 35,
       gender: data?.gender || "Other",
-      visitId: `OPD-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      phone: data?.phone,
+      visitId: data?.visitId || `OPD-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       visitDate: new Date().toISOString().split("T")[0],
       language: data?.language || "en",
       clinicalTrack: data?.clinicalTrack || "MODERN_MEDICINE",
@@ -391,6 +393,7 @@ export const PatientSessionProvider: React.FC<{
     setPatient(newPt);
     setAnswers({});
     setRecordedAnswers([]);
+    setInterviewAnswers([]);
     setUploadedDocuments([]);
     setConsents([]);
     setConsent({
@@ -399,6 +402,8 @@ export const PatientSessionProvider: React.FC<{
       staffSharing: false,
       grantedAt: undefined,
     });
+    setAlerts([]);
+    setTimeline([]);
     setIsSessionActive(true);
     setIsSessionTimedOut(false);
     setShowTimeoutWarning(false);

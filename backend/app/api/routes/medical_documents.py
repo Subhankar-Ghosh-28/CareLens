@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.medical_document import MedicalDocument
 from app.models.patient import Patient
+from app.models.consent import PatientConsent
 from app.services.ocr import extract_document_text
 from app.services.extractor import extract_clinical_entities
 
@@ -65,6 +66,21 @@ async def upload_medical_document(
     if not db.get(Patient, patient_id):
         raise HTTPException(status_code=404, detail="Patient not found.")
 
+    consent = (
+        db.query(PatientConsent)
+        .filter(
+            PatientConsent.patientId == patient_id,
+            PatientConsent.type == "DOCUMENT_DIGITIZATION",
+            PatientConsent.status == "GRANTED"
+        )
+        .first()
+    )
+    if not consent:
+        raise HTTPException(
+            status_code=403,
+            detail="Patient consent for medical document digitization is required."
+        )
+
     content = await uploaded_file.read(MAX_UPLOAD_BYTES + 1)
     if not content:
         raise HTTPException(status_code=400, detail="The uploaded document is empty.")
@@ -121,6 +137,25 @@ def create_medical_document(
             detail="patientId is required"
         )
 
+    patient = db.get(Patient, int(patient_id))
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+
+    consent = (
+        db.query(PatientConsent)
+        .filter(
+            PatientConsent.patientId == int(patient_id),
+            PatientConsent.type == "DOCUMENT_DIGITIZATION",
+            PatientConsent.status == "GRANTED"
+        )
+        .first()
+    )
+    if not consent:
+        raise HTTPException(
+            status_code=403,
+            detail="Patient consent for medical document digitization is required."
+        )
+
     new_document = MedicalDocument(
         patientId=int(patient_id),
         filename=document.get("filename", "Medical Document"),
@@ -144,6 +179,25 @@ def get_medical_documents(
     patient_id: int,
     db: Session = Depends(get_db)
 ):
+    patient = db.get(Patient, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+
+    consent = (
+        db.query(PatientConsent)
+        .filter(
+            PatientConsent.patientId == patient_id,
+            PatientConsent.type == "DOCUMENT_DIGITIZATION",
+            PatientConsent.status == "GRANTED"
+        )
+        .first()
+    )
+    if not consent:
+        raise HTTPException(
+            status_code=403,
+            detail="Patient consent for medical document digitization is required."
+        )
+
     documents = (
         db.query(MedicalDocument)
         .filter(MedicalDocument.patientId == patient_id)
