@@ -143,21 +143,32 @@ Run the test suite with the backend virtual environment:
 .\backend\venv\Scripts\python.exe backend/tests/test_backend_suite.py
 ```
 
-### Verified Test Cases:
-1. `GET /api/health` — PostgreSQL connection and health check
-2. `POST /api/patients/` — Patient registration with clinical track
-3. `GET /api/patients/{id}` — Patient data retrieval
-4. `POST /api/clinical-history/` — Clinical answer & AYUSH intake persistence
-5. `GET /api/clinical-history/{patient_id}` — Chronological answer retrieval
-6. Multipart upload validation:
+### Verified Test Cases (16 End-to-End Tests):
+1. `GET /api/health` — PostgreSQL connection and health check.
+2. `POST /api/patients/` — Patient registration with clinical track assignment.
+3. `GET /api/patients/{id}` — Real patient profile retrieval from PostgreSQL.
+4. Consent enforcement for Clinical History — `POST` and `GET` blocked (`403`) prior to granting `HISTORY_CAPTURE` consent.
+5. Consent lifecycle management — Initial compliance check, granting 3 required consents (`HISTORY_CAPTURE`, `DOCUMENT_DIGITIZATION`, `STAFF_SHARING`), and status verification.
+6. `POST /api/clinical-history/` — Modern medicine and AYUSH intake answer persistence (with consent).
+7. `GET /api/clinical-history/{patient_id}` — Chronological answer retrieval for doctor dashboard.
+8. Consent enforcement for Medical Documents — Multipart upload and retrieval blocked (`403`) without `DOCUMENT_DIGITIZATION` consent.
+9. Multipart upload validations:
    - Non-existent patient ID rejection (`404`)
    - Invalid file magic signature rejection (`415`)
-   - File size exceeding 15 MB limit rejection (`413`)
-7. `POST /api/medical-documents/upload` — Real OCR execution, confidence calculation, and deterministic entity extraction
-8. `GET /api/medical-documents/{patient_id}` — Stored document retrieval
-9. `GET /api/patients/{patient_id}/fhir` — HL7 FHIR R4 Bundle generation
-10. `POST /api/abha/verify` — ABHA validation and sandbox identification
-11. Clean teardown — Automatic deletion of synthetic test records
+   - Oversized file rejection (`413` for >15 MB)
+10. `POST /api/medical-documents/upload` — Local Tesseract OCR execution, confidence scoring, and deterministic clinical entity extraction.
+11. `GET /api/medical-documents/{patient_id}` — Stored document metadata & extraction retrieval.
+12. `GET /api/patients/{patient_id}/fhir` — HL7 FHIR R4 Bundle generation (including `Consent` and `QuestionnaireResponse`).
+13. `POST /api/abha/verify` — ABHA validation and explicit sandbox distinction.
+14. Consent API Security & Cross-Patient Authorization:
+    - Missing `patientId` rejection (`400`)
+    - Cross-patient unauthorized revocation attempt rejection (`403`)
+    - Non-existent patient rejection (`404`)
+    - Non-existent consent rejection (`404`)
+    - Patient revoking own consent (`200 REVOKED`)
+    - Required-consent status update verification
+15. Post-revocation access control — Access to clinical history immediately blocked (`403`) after revocation.
+16. PostgreSQL Foreign Key Constraints — Verified on live PostgreSQL across `patient_consents`, `clinical_history`, and `medical_documents` tables (rejecting orphan patient IDs).
 
 To verify frontend TypeScript types and production build:
 ```powershell
@@ -176,19 +187,40 @@ npm --prefix frontend run build
 | `GET` | `/api/patients/` | Retrieve all registered patients |
 | `GET` | `/api/patients/{id}` | Get single patient demographics |
 | `GET` | `/api/patients/{id}/fhir` | Export patient encounter as a FHIR R4 Document Bundle |
-| `POST` | `/api/clinical-history/` | Record patient interview answers (modern & AYUSH) |
-| `GET` | `/api/clinical-history/{patient_id}` | Retrieve clinical interview records for a patient |
-| `POST` | `/api/medical-documents/upload` | Multipart file upload with local Tesseract OCR & extraction |
-| `POST` | `/api/medical-documents/` | Store pre-parsed document metadata |
-| `GET` | `/api/medical-documents/{patient_id}` | Retrieve all uploaded documents for a patient |
-| `POST` | `/api/abha/verify` | Format verification for ABHA ID / Address |
+| `GET` | `/api/consents/{patient_id}/status` | Check required consent status (`hasAllRequired`, missing list) |
+| `GET` | `/api/consents/{patient_id}` | Retrieve all consent records for a patient |
+| `POST` | `/api/consents/grant` | Grant patient consent (`HISTORY_CAPTURE`, `DOCUMENT_DIGITIZATION`, etc.) |
+| `POST` | `/api/consents/{consent_id}/revoke`| Revoke patient consent (requires patient ownership verification) |
+| `POST` | `/api/consents/revoke` | Revoke patient consent by patientId and type/consentId |
+| `POST` | `/api/clinical-history/` | Record patient interview answers (requires `HISTORY_CAPTURE` consent) |
+| `GET` | `/api/clinical-history/{patient_id}` | Retrieve clinical interview records (requires `HISTORY_CAPTURE` consent) |
+| `POST` | `/api/medical-documents/upload` | Multipart file upload with local OCR (requires `DOCUMENT_DIGITIZATION` consent) |
+| `POST` | `/api/medical-documents/` | Store document metadata (requires `DOCUMENT_DIGITIZATION` consent) |
+| `GET` | `/api/medical-documents/{patient_id}` | Retrieve all uploaded documents (requires `DOCUMENT_DIGITIZATION` consent) |
+| `POST` | `/api/abha/verify` | Format verification for ABHA ID / Address (sandbox mode) |
 
 ---
 
-## Status & Operational Boundaries
+## Operational Architecture & Honest Boundaries
 
-- **Local OCR:** Fully implemented and verified using local Tesseract OCR engine.
-- **Database Persistence:** Real PostgreSQL connection verified for all patients, clinical history, and documents.
-- **Demo Mode:** Maintained alongside real PostgreSQL mode; switching or testing without backend is seamlessly supported.
-- **ABDM / ABHA Integration:** Format validation and FHIR R4 document structuring are live; gateway exchange is marked as sandbox until live government API credentials are provisioned.
-- **AI Extraction:** Deterministic rule-based extraction ensures zero clinical fabrication; physician review remains mandatory.
+To ensure complete architectural clarity:
+
+1. **Working Local Functionality (Real & Verified):**
+   - Real PostgreSQL persistence for patients, consent records, clinical history, and document metadata.
+   - Live foreign key integrity (`ON DELETE CASCADE`) enforcing database relational consistency.
+   - Consent enforcement on both frontend and backend for clinical history recording and document digitization.
+   - Local, server-side Tesseract OCR running in-memory with zero disk persistence of document images.
+   - Rule-based red-flag triage providing explainable clinical safety alerts.
+   - Standard HL7 FHIR R4 Bundle generation including Consent and QuestionnaireResponse.
+   - Kiosk session wiping preventing patient-to-patient data leakage.
+
+2. **Mock / Demo Fallback:**
+   - When running without a live backend or for demo walk-ins with non-numeric IDs, frontend in-memory services (`DemoConsentService`, `DemoClinicalHistoryService`, mock patients) activate seamlessly to allow UI evaluation.
+
+3. **Sandbox Integrations:**
+   - ABHA format verification operates in sandbox mode (`isSandbox: true`) evaluating against official ABDM format specifications without calling live government OTP gateways.
+
+4. **Regulatory & Clinical Decision Support Notice:**
+   - CareLens is an academic / hackathon prototype built for Smart India Hackathon 2026.
+   - It is **not** certified under HIPAA, India DPDP Act 2023, or ISO 27001, and is **not** approved as a Class A/B medical device.
+   - All AI extractions and red flags are auxiliary decision support for registered medical practitioners and do not substitute for formal clinical judgment.
