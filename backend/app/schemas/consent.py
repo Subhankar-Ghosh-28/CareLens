@@ -15,6 +15,10 @@ class ConsentRevokeRequest(BaseModel):
     type: Optional[str] = None
 
 
+class ConsentRevokeByIdRequest(BaseModel):
+    patientId: Optional[int] = None
+
+
 class ConsentResponse(BaseModel):
     consentId: str
     patientId: str

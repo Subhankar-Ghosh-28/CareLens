@@ -43,6 +43,28 @@ app.add_middleware(
 
 Base.metadata.create_all(bind=engine)
 
+# Ensure foreign key constraint exists on existing PostgreSQL tables
+try:
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_patient_consents_patient'
+                    ) THEN
+                        ALTER TABLE patient_consents
+                        ADD CONSTRAINT fk_patient_consents_patient
+                        FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
+                    END IF;
+                END $$;
+                """
+            )
+        )
+except Exception as e:
+    print(f"[DB MIGRATION NOTICE] FK constraint check: {e}")
+
 app.include_router(patient_router)
 
 app.include_router(abha_router)

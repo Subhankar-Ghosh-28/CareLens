@@ -80,6 +80,7 @@ def run_all_tests():
     print("STARTING CARELENS BACKEND AUTOMATED TEST SUITE")
     print("==================================================")
     test_patient_id = None
+    other_patient_id = None
     created_doc_id = None
 
     try:
@@ -253,8 +254,8 @@ def run_all_tests():
         assert res.get("consents", {}).get("DOCUMENT_DIGITIZATION") is False, "Initial DOCUMENT_DIGITIZATION must be False"
         assert res.get("consents", {}).get("STAFF_SHARING") is False, "Initial STAFF_SHARING must be False"
 
-        # 11b. Grant consents
-        status, res = http_request("/api/consents/grant", method="POST", data={
+        # 11b. Grant all 3 required consents
+        status, res_hist = http_request("/api/consents/grant", method="POST", data={
             "patientId": test_patient_id,
             "type": "HISTORY_CAPTURE",
             "title": "Clinical History Intake Consent",
@@ -263,10 +264,11 @@ def run_all_tests():
             "language": "en"
         })
         assert status == 200, f"Grant HISTORY_CAPTURE failed: {status}"
-        assert res.get("status") == "GRANTED", "Status not GRANTED"
-        assert res.get("type") == "HISTORY_CAPTURE", "Type mismatch"
+        assert res_hist.get("status") == "GRANTED", "Status not GRANTED"
+        assert res_hist.get("type") == "HISTORY_CAPTURE", "Type mismatch"
+        hist_consent_id = int(res_hist["consentId"])
 
-        status, res = http_request("/api/consents/grant", method="POST", data={
+        status, res_doc = http_request("/api/consents/grant", method="POST", data={
             "patientId": test_patient_id,
             "type": "DOCUMENT_DIGITIZATION",
             "title": "Document OCR Digitization Consent",
@@ -274,8 +276,9 @@ def run_all_tests():
             "language": "en"
         })
         assert status == 200, f"Grant DOCUMENT_DIGITIZATION failed: {status}"
+        doc_consent_id = int(res_doc["consentId"])
 
-        status, res = http_request("/api/consents/grant", method="POST", data={
+        status, res_staff = http_request("/api/consents/grant", method="POST", data={
             "patientId": test_patient_id,
             "type": "STAFF_SHARING",
             "title": "Care Team Data Sharing Consent",
@@ -284,7 +287,7 @@ def run_all_tests():
         })
         assert status == 200, f"Grant STAFF_SHARING failed: {status}"
 
-        # 11c. Verify updated status
+        # 11c. Verify all required consents are satisfied
         status, res = http_request(f"/api/consents/{test_patient_id}/status")
         assert status == 200, f"Updated status check failed: {status}"
         assert res.get("hasAllRequired") is True, "hasAllRequired not True after granting all"
@@ -292,45 +295,137 @@ def run_all_tests():
         assert res.get("consents", {}).get("DOCUMENT_DIGITIZATION") is True, "DOCUMENT_DIGITIZATION not True after grant"
         assert res.get("consents", {}).get("STAFF_SHARING") is True, "STAFF_SHARING not True after grant"
 
-        # 11d. Retrieve consent records
+        # 11d. Retrieve consent records list
         status, res = http_request(f"/api/consents/{test_patient_id}")
         assert status == 200, f"Consent records retrieval failed: {status}"
         assert len(res) == 3, f"Expected 3 consent records, got {len(res)}"
+        print("[PASS] 11. Consent granting, listing, and compliance status verified")
 
-        # 11e. Revoke a consent
-        status, res = http_request("/api/consents/revoke", method="POST", data={
-            "patientId": test_patient_id,
-            "type": "HISTORY_CAPTURE"
+        # 12. Consent API Security & Authorization Validations
+        # Create a second patient for cross-patient authorization checks
+        status, res_other = http_request("/api/patients/", method="POST", data={
+            "name": "Different Unauthorized Patient",
+            "age": 29,
+            "gender": "Male",
+            "phone": "+91 99999 11111",
+            "clinicalTrack": "MODERN_MEDICINE"
         })
-        assert status == 200, f"Revoke consent failed: {status}"
-        assert res.get("status") == "REVOKED", "Status not REVOKED"
+        assert status == 200, f"Creation of second patient failed: {status}"
+        other_patient_id = res_other.get("id")
 
+        # 12a. Cannot revoke by record ID alone without patientId (requires patientId)
+        status, res = http_request(f"/api/consents/{hist_consent_id}/revoke", method="POST")
+        assert status == 400, f"Expected 400 when patientId missing in /{hist_consent_id}/revoke, got {status} {res}"
+        assert "patientId is required" in res.get("detail", ""), "Expected missing patientId detail"
+
+        # 12b. A different patient CANNOT revoke another patient's consent (POST /api/consents/{consent_id}/revoke)
+        status, res = http_request(
+            f"/api/consents/{hist_consent_id}/revoke",
+            method="POST",
+            data={"patientId": other_patient_id}
+        )
+        assert status == 403, f"Expected 403 Forbidden for cross-patient revoke by ID, got {status} {res}"
+        assert "does not belong" in res.get("detail", ""), "Expected ownership mismatch detail"
+
+        # 12c. A different patient CANNOT revoke another patient's consent (POST /api/consents/revoke with consentId)
+        status, res = http_request(
+            "/api/consents/revoke",
+            method="POST",
+            data={"patientId": other_patient_id, "consentId": str(hist_consent_id)}
+        )
+        assert status == 403, f"Expected 403 Forbidden for cross-patient /revoke, got {status} {res}"
+        assert "does not belong" in res.get("detail", ""), "Expected ownership mismatch detail"
+
+        # 12d. Nonexistent patient returns 404 Not Found
+        status, res = http_request(
+            f"/api/consents/{hist_consent_id}/revoke",
+            method="POST",
+            data={"patientId": 999999}
+        )
+        assert status == 404, f"Expected 404 for nonexistent patient, got {status}"
+
+        status, res = http_request(
+            "/api/consents/revoke",
+            method="POST",
+            data={"patientId": 999999, "type": "HISTORY_CAPTURE"}
+        )
+        assert status == 404, f"Expected 404 for nonexistent patient in /revoke, got {status}"
+
+        # 12e. Nonexistent consent returns 404 Not Found
+        status, res = http_request(
+            "/api/consents/999999/revoke",
+            method="POST",
+            data={"patientId": test_patient_id}
+        )
+        assert status == 404, f"Expected 404 for nonexistent consent ID, got {status}"
+
+        status, res = http_request(
+            "/api/consents/revoke",
+            method="POST",
+            data={"patientId": test_patient_id, "consentId": "999999"}
+        )
+        assert status == 404, f"Expected 404 for nonexistent consent in /revoke, got {status}"
+
+        # 12f. A patient CAN revoke their OWN consent (POST /api/consents/{consent_id}/revoke)
+        status, res = http_request(
+            f"/api/consents/{hist_consent_id}/revoke",
+            method="POST",
+            data={"patientId": test_patient_id}
+        )
+        assert status == 200, f"Patient failed to revoke own consent: {status} {res}"
+        assert res.get("status") == "REVOKED", "Consent status not REVOKED"
+        assert res.get("consentId") == str(hist_consent_id), "Consent ID mismatch"
+
+        # 12g. Revoking consent updates the required-consent status
         status, res = http_request(f"/api/consents/{test_patient_id}/status")
         assert status == 200, f"Status check after revoke failed: {status}"
         assert res.get("hasAllRequired") is False, "hasAllRequired must be False after revocation"
-        assert res.get("consents", {}).get("HISTORY_CAPTURE") is False, "HISTORY_CAPTURE should be False after revocation"
-        assert res.get("consents", {}).get("DOCUMENT_DIGITIZATION") is True, "DOCUMENT_DIGITIZATION should remain True"
+        assert res.get("consents", {}).get("HISTORY_CAPTURE") is False, "HISTORY_CAPTURE must be False"
+        assert res.get("consents", {}).get("DOCUMENT_DIGITIZATION") is True, "DOCUMENT_DIGITIZATION must remain True"
+        assert "HISTORY_CAPTURE" in res.get("missing", []), "HISTORY_CAPTURE must be listed in missing"
+        print("[PASS] 12. Consent security (ownership enforcement, 400/403/404 handling, compliance update) verified")
 
-        # 11f. Non-existent patient rejection
-        status, res = http_request("/api/consents/999999/status")
-        assert status == 404, f"Expected 404 for non-existent patient, got {status}"
+        # 13. PostgreSQL Foreign Key Constraint Verification
+        from sqlalchemy.exc import IntegrityError
+        from app.core.database import SessionLocal
+        from app.models.patient import Patient
+        from app.models.consent import PatientConsent
 
-        print("[PASS] 11. Consent management (grant, revoke, status check, records, 404 handling) verified")
+        db_fk = SessionLocal()
+        fk_violation_caught = False
+        try:
+            orphan_consent = PatientConsent(
+                patientId=999999,
+                type="STAFF_SHARING",
+                title="Orphan Consent Test",
+                description="Testing foreign key constraint",
+                status="GRANTED"
+            )
+            db_fk.add(orphan_consent)
+            db_fk.commit()
+        except IntegrityError:
+            db_fk.rollback()
+            fk_violation_caught = True
+        finally:
+            db_fk.close()
 
-        # 12. Verify Consent resource in FHIR Bundle
+        assert fk_violation_caught is True, "PostgreSQL foreign key constraint failed to reject orphan patientId"
+        print("[PASS] 13. PostgreSQL foreign key constraint (patient_consents.patientId -> patients.id) verified")
+
+        # 14. Verify Consent resource in FHIR Bundle
         status, res = http_request(f"/api/patients/{test_patient_id}/fhir")
         assert status == 200, f"FHIR export failed: {status}"
         resource_types = [entry["resource"]["resourceType"] for entry in res.get("entry", [])]
         assert "Consent" in resource_types, "Consent resource missing in FHIR bundle"
-        print("[PASS] 12. FHIR Consent resource inclusion verified")
+        print("[PASS] 14. FHIR Consent resource inclusion verified")
 
         print("==================================================")
-        print("ALL 12 AUTOMATED BACKEND TESTS PASSED SUCCESSFULLY!")
+        print("ALL 14 AUTOMATED BACKEND TESTS PASSED SUCCESSFULLY!")
         print("==================================================")
         return True
 
     finally:
-        # 13. Cleanup: delete synthetic test records directly via DB session
+        # 15. Cleanup: delete synthetic test records directly via DB session
         from app.core.database import SessionLocal
         from app.models.clinical_history import ClinicalHistory
         from app.models.medical_document import MedicalDocument
@@ -354,8 +449,14 @@ def run_all_tests():
                 pt = db.get(Patient, test_patient_id)
                 if pt:
                     db.delete(pt)
+            if other_patient_id:
+                # Delete any consents and patient record for other patient
+                db.query(PatientConsent).filter(PatientConsent.patientId == other_patient_id).delete()
+                pt_other = db.get(Patient, other_patient_id)
+                if pt_other:
+                    db.delete(pt_other)
             db.commit()
-            print("[CLEANUP] Synthetic test patient, consents, and records deleted from PostgreSQL")
+            print("[CLEANUP] Synthetic test patients, consents, and records deleted from PostgreSQL")
         except Exception as e:
             print(f"[CLEANUP ERROR]: {e}")
         finally:

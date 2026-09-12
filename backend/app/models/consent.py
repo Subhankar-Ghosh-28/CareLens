@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from datetime import datetime
 
 from app.core.database import Base
@@ -8,7 +8,7 @@ class PatientConsent(Base):
     __tablename__ = "patient_consents"
 
     id = Column(Integer, primary_key=True, index=True)
-    patientId = Column(Integer, nullable=False, index=True)
+    patientId = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, index=True)
     type = Column(String(50), nullable=False, index=True)  # HISTORY_CAPTURE, DOCUMENT_DIGITIZATION, STAFF_SHARING
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)

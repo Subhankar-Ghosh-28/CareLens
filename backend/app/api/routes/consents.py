@@ -1,5 +1,6 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -8,6 +9,7 @@ from app.models.patient import Patient
 from app.schemas.consent import (
     ConsentGrantRequest,
     ConsentRevokeRequest,
+    ConsentRevokeByIdRequest,
     ConsentResponse,
     ConsentStatusResponse,
 )
@@ -113,21 +115,33 @@ def revoke_consent(data: ConsentRevokeRequest, db: Session = Depends(get_db)):
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found.")
 
-    query = db.query(PatientConsent).filter(PatientConsent.patientId == data.patientId)
-
     if data.consentId:
         try:
             cid = int(data.consentId)
-            record = query.filter(PatientConsent.id == cid).first()
+            record = db.get(PatientConsent, cid)
         except ValueError:
             record = None
+
+        if not record:
+            raise HTTPException(status_code=404, detail="Consent record not found.")
+        if record.patientId != data.patientId:
+            raise HTTPException(
+                status_code=403,
+                detail="Consent record does not belong to the specified patient."
+            )
     elif data.type:
-        record = query.filter(PatientConsent.type == data.type.strip().upper()).first()
+        record = (
+            db.query(PatientConsent)
+            .filter(
+                PatientConsent.patientId == data.patientId,
+                PatientConsent.type == data.type.strip().upper(),
+            )
+            .first()
+        )
+        if not record:
+            raise HTTPException(status_code=404, detail="Consent record not found.")
     else:
         raise HTTPException(status_code=400, detail="Either consentId or type must be provided.")
-
-    if not record:
-        raise HTTPException(status_code=404, detail="Consent record not found.")
 
     record.status = "REVOKED"
     record.updated_at = datetime.utcnow()
@@ -137,11 +151,33 @@ def revoke_consent(data: ConsentRevokeRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/{consent_id}/revoke", response_model=ConsentResponse)
-def revoke_consent_by_id(consent_id: int, db: Session = Depends(get_db)):
-    """Revoke consent by record ID."""
+def revoke_consent_by_id(
+    consent_id: int,
+    data: Optional[ConsentRevokeByIdRequest] = None,
+    patientId: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Revoke consent by record ID, requiring patientId and verifying ownership."""
+    pid = data.patientId if (data and data.patientId is not None) else patientId
+    if pid is None:
+        raise HTTPException(
+            status_code=400,
+            detail="patientId is required to revoke consent."
+        )
+
+    patient = db.get(Patient, pid)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+
     record = db.get(PatientConsent, consent_id)
     if not record:
         raise HTTPException(status_code=404, detail="Consent record not found.")
+
+    if record.patientId != pid:
+        raise HTTPException(
+            status_code=403,
+            detail="Consent record does not belong to the specified patient."
+        )
 
     record.status = "REVOKED"
     record.updated_at = datetime.utcnow()
