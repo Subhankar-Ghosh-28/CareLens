@@ -9,18 +9,22 @@ from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import text
-
-from app.core.database import engine, Base
-from app.api.routes.patients import router as patient_router
-from app.api.routes.abha import router as abha_router
-from app.models.patient import Patient
-from app.models.clinical_history import ClinicalHistory
-from app.api.routes.clinical_history import router as clinical_history_router
-from app.models.medical_document import MedicalDocument
-from app.api.routes.medical_documents import router as medical_document_router
-from app.models.consent import PatientConsent
-from app.api.routes.consents import router as consent_router
+try:
+    from sqlalchemy import text
+    from app.core.database import engine, Base
+    from app.api.routes.patients import router as patient_router
+    from app.api.routes.abha import router as abha_router
+    from app.models.patient import Patient
+    from app.models.clinical_history import ClinicalHistory
+    from app.api.routes.clinical_history import router as clinical_history_router
+    from app.models.medical_document import MedicalDocument
+    from app.api.routes.medical_documents import router as medical_document_router
+    from app.models.consent import PatientConsent
+    from app.api.routes.consents import router as consent_router
+    HAS_DB = True
+except ImportError as e:
+    HAS_DB = False
+    print(f"[CARE-LENS NOTICE] Running in standalone mode without relational DB: {e}")
 
 from clinical_engine import (
     interpret_rural_expressions,
@@ -58,51 +62,53 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database table creation and foreign key verification
-try:
-    Base.metadata.create_all(bind=engine)
-    with engine.connect() as conn:
-        conn.execute(
-            text(
-                """
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_patient_consents_patient'
-                    ) THEN
-                        ALTER TABLE patient_consents
-                        ADD CONSTRAINT fk_patient_consents_patient
-                        FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
-                    END IF;
+if HAS_DB:
+    # Database table creation and foreign key verification
+    try:
+        Base.metadata.create_all(bind=engine)
+        with engine.connect() as conn:
+            conn.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'fk_patient_consents_patient'
+                        ) THEN
+                            ALTER TABLE patient_consents
+                            ADD CONSTRAINT fk_patient_consents_patient
+                            FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
+                        END IF;
 
-                    IF NOT EXISTS (
-                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_clinical_history_patient'
-                    ) THEN
-                        ALTER TABLE clinical_history
-                        ADD CONSTRAINT fk_clinical_history_patient
-                        FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
-                    END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'fk_clinical_history_patient'
+                        ) THEN
+                            ALTER TABLE clinical_history
+                            ADD CONSTRAINT fk_clinical_history_patient
+                            FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
+                        END IF;
 
-                    IF NOT EXISTS (
-                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_medical_documents_patient'
-                    ) THEN
-                        ALTER TABLE medical_documents
-                        ADD CONSTRAINT fk_medical_documents_patient
-                        FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
-                    END IF;
-                END $$;
-                """
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'fk_medical_documents_patient'
+                        ) THEN
+                            ALTER TABLE medical_documents
+                            ADD CONSTRAINT fk_medical_documents_patient
+                            FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
+                        END IF;
+                    END $$;
+                    """
+                )
             )
-        )
-except Exception as e:
-    print(f"[DB MIGRATION NOTICE] FK constraint check: {e}")
+    except Exception as e:
+        print(f"[DB MIGRATION NOTICE] FK constraint check: {e}")
 
-# Include relational database routers
-app.include_router(patient_router)
-app.include_router(abha_router)
-app.include_router(clinical_history_router)
-app.include_router(medical_document_router)
-app.include_router(consent_router)
+    # Include relational database routers
+    app.include_router(patient_router)
+    app.include_router(abha_router)
+    app.include_router(clinical_history_router)
+    app.include_router(medical_document_router)
+    app.include_router(consent_router)
+
 
 # In-memory storage for demo patient intake and triage queue
 PATIENTS_DB: Dict[str, Dict[str, Any]] = {
