@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { PatientKioskShell } from '../../components/layout/PatientKioskShell';
-import { usePatientSession } from '../../contexts/PatientSessionContext';
-import { useLanguage } from '../../contexts/LanguageContext';
-import { CLINICAL_QUESTIONS, AYUSH_QUESTIONS, INDIAN_LOCAL_EXPRESSIONS, RED_FLAG_RULES } from '../../data/questionBank';
-import { voiceService } from '../../services';
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { PatientKioskShell } from "../../components/layout/PatientKioskShell";
+import { usePatientSession } from "../../contexts/PatientSessionContext";
+import { useLanguage } from "../../contexts/LanguageContext";
+import {
+  CLINICAL_QUESTIONS,
+  AYUSH_QUESTIONS,
+  INDIAN_LOCAL_EXPRESSIONS,
+  RED_FLAG_RULES,
+} from "../../data/questionBank";
+import { voiceService } from "../../services";
 import {
   Mic,
   MicOff,
@@ -14,10 +19,11 @@ import {
   CheckCircle2,
   Sparkles,
   AlertTriangle,
+  AlertCircle,
   Info,
-  Layers
-} from 'lucide-react';
-import { RedFlagAlert } from '../../types';
+  Layers,
+} from "lucide-react";
+import { RedFlagAlert } from "../../types";
 
 export const KioskHistoryPage: React.FC = () => {
   const navigate = useNavigate();
@@ -25,21 +31,32 @@ export const KioskHistoryPage: React.FC = () => {
   const {
     patient,
     clinicalTrack,
+    answers,
+    saveAnswer,
     interviewAnswers,
     addInterviewAnswer,
-    addRedFlag
+    addRedFlag,
+    consent,
   } = usePatientSession();
 
+  useEffect(() => {
+    if (!consent.historyCapture) {
+      navigate("/kiosk/consent");
+    }
+  }, [consent.historyCapture, navigate]);
+
   // Combine Modern Medicine & AYUSH questions based on clinical track
-  const allQuestions = clinicalTrack === 'AYUSH'
-    ? [...CLINICAL_QUESTIONS, ...AYUSH_QUESTIONS]
-    : CLINICAL_QUESTIONS;
+  const allQuestions =
+    clinicalTrack === "AYUSH"
+      ? [...CLINICAL_QUESTIONS, ...AYUSH_QUESTIONS]
+      : CLINICAL_QUESTIONS;
 
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
-  const [textFallback, setTextFallback] = useState('');
+  const [textFallback, setTextFallback] = useState("");
   const [isRecording, setIsRecording] = useState(false);
-  const [recognizedText, setRecognizedText] = useState('');
+  const [recognizedText, setRecognizedText] = useState("");
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [recognizedVernacular, setRecognizedVernacular] = useState<{
     term: string;
@@ -49,8 +66,11 @@ export const KioskHistoryPage: React.FC = () => {
   const currentQuestion = allQuestions[currentIndex] || allQuestions[0];
 
   const getQuestionText = (): string => {
-    if (!currentQuestion) return '';
-    return (currentQuestion.question as any)[currentLanguage] || currentQuestion.question.en;
+    if (!currentQuestion) return "";
+    return (
+      (currentQuestion.question as any)[currentLanguage] ||
+      currentQuestion.question.en
+    );
   };
 
   // Speak question on demand
@@ -64,14 +84,16 @@ export const KioskHistoryPage: React.FC = () => {
 
   useEffect(() => {
     // Reset local inputs when moving to a new question
-    const existing = interviewAnswers.find(a => a.questionId === currentQuestion.id);
+    const existing = interviewAnswers.find(
+      (a) => a.questionId === currentQuestion.id,
+    );
     if (existing) {
       setTextFallback(existing.answer);
-      setSelectedOptions(existing.answer.split(', ').filter(Boolean));
+      setSelectedOptions(existing.answer.split(", ").filter(Boolean));
     } else {
-      setTextFallback('');
+      setTextFallback("");
       setSelectedOptions([]);
-      setRecognizedText('');
+      setRecognizedText("");
       setRecognizedVernacular(null);
     }
   }, [currentIndex, currentQuestion.id]);
@@ -83,7 +105,7 @@ export const KioskHistoryPage: React.FC = () => {
       if (lower.includes(exp.vernacular.toLowerCase())) {
         setRecognizedVernacular({
           term: exp.vernacular,
-          clinicalMeaning: `${exp.clinicalConcept} (${exp.englishMeaning})`
+          clinicalMeaning: `${exp.clinicalConcept} (${exp.englishMeaning})`,
         });
         return;
       }
@@ -99,11 +121,11 @@ export const KioskHistoryPage: React.FC = () => {
           alertId: `rf_${Date.now()}`,
           patientId: patient.id,
           trigger: rule.triggerAnswer,
-          source: 'Patient Conversational Intake',
+          source: "Patient Conversational Intake",
           timestamp: new Date().toISOString(),
-          priority: rule.severity === 'HIGH' ? 'CRITICAL' : 'ATTENTION',
-          status: 'Needs triage',
-          wording: `High-priority attention item: ${rule.message}`
+          priority: rule.severity === "HIGH" ? "CRITICAL" : "ATTENTION",
+          status: "Needs triage",
+          wording: `High-priority attention item: ${rule.message}`,
         };
         addRedFlag(newAlert);
       }
@@ -132,7 +154,7 @@ export const KioskHistoryPage: React.FC = () => {
           },
           () => {
             setIsRecording(false);
-          }
+          },
         );
       } catch (err) {
         setIsRecording(false);
@@ -142,49 +164,108 @@ export const KioskHistoryPage: React.FC = () => {
 
   const handleOptionClick = (val: string) => {
     let next: string[];
-    if (currentQuestion.inputType === 'single_choice' || currentQuestion.inputType === 'yes_no') {
+    if (
+      currentQuestion.inputType === "single_choice" ||
+      currentQuestion.inputType === "yes_no"
+    ) {
       next = [val];
     } else {
       next = selectedOptions.includes(val)
-        ? selectedOptions.filter(o => o !== val)
+        ? selectedOptions.filter((o) => o !== val)
         : [...selectedOptions, val];
     }
     setSelectedOptions(next);
-    const combined = next.join(', ');
+    const combined = next.join(", ");
     setTextFallback(combined);
     checkVernacular(combined);
     checkRedFlags(currentQuestion.id, combined);
   };
 
-  const handleNext = () => {
-    const finalAnswer = textFallback.trim() || selectedOptions.join(', ') || 'None reported';
+  const handleNext = async () => {
+    const finalAnswer =
+      textFallback.trim() || selectedOptions.join(", ") || "None reported";
 
-    // Save answer
-    addInterviewAnswer({
+    const databasePatientId = patient.databaseId ?? Number(patient.id);
+
+    if (!Number.isInteger(databasePatientId)) {
+      addInterviewAnswer({
+        questionId: currentQuestion.id,
+        category: currentQuestion.category,
+        questionText: getQuestionText(),
+        answer: finalAnswer,
+        timestamp: new Date().toISOString(),
+        modality: isRecording
+          ? "VOICE"
+          : selectedOptions.length > 0
+            ? "TOUCH"
+            : "TEXT",
+      });
+
+      if (currentIndex < allQuestions.length - 1) {
+        setCurrentIndex((prev) => prev + 1);
+      } else {
+        navigate("/kiosk/documents");
+      }
+      return;
+    }
+
+    const answerData = {
+      patientId: databasePatientId,
       questionId: currentQuestion.id,
-      category: currentQuestion.category,
-      questionText: getQuestionText(),
+      question: getQuestionText(),
       answer: finalAnswer,
-      timestamp: new Date().toISOString(),
-      modality: isRecording ? 'VOICE' : selectedOptions.length > 0 ? 'TOUCH' : 'TEXT'
-    });
+      language: currentLanguage,
+    };
 
-    if (currentIndex < allQuestions.length - 1) {
-      setCurrentIndex(prev => prev + 1);
-    } else {
-      // Completed all questions
-      navigate('/kiosk/documents');
+    try {
+      const response = await fetch(
+        "http://localhost:8000/api/clinical-history/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(answerData),
+        },
+      );
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.detail || `Failed to save clinical history: ${response.status}`);
+      }
+
+      addInterviewAnswer({
+        questionId: currentQuestion.id,
+        category: currentQuestion.category,
+        questionText: getQuestionText(),
+        answer: finalAnswer,
+        timestamp: new Date().toISOString(),
+        modality: isRecording
+          ? "VOICE"
+          : selectedOptions.length > 0
+            ? "TOUCH"
+            : "TEXT",
+      });
+
+      if (currentIndex < allQuestions.length - 1) {
+        setCurrentIndex((prev) => prev + 1);
+      } else {
+        navigate("/kiosk/documents");
+      }
+    } catch (error: any) {
+      console.error("Failed to save clinical history:", error);
+      setErrorMsg(error?.message || "Failed to record your answer. Please try again.");
     }
   };
 
   const handlePrev = () => {
     if (currentIndex > 0) {
-      setCurrentIndex(prev => prev - 1);
+      setCurrentIndex((prev) => prev - 1);
     }
   };
 
   const handleFinishEarly = () => {
-    const finalAnswer = textFallback.trim() || selectedOptions.join(', ');
+    const finalAnswer = textFallback.trim() || selectedOptions.join(", ");
     if (finalAnswer) {
       addInterviewAnswer({
         questionId: currentQuestion.id,
@@ -192,10 +273,10 @@ export const KioskHistoryPage: React.FC = () => {
         questionText: getQuestionText(),
         answer: finalAnswer,
         timestamp: new Date().toISOString(),
-        modality: 'TOUCH'
+        modality: "TOUCH",
       });
     }
-    navigate('/kiosk/documents');
+    navigate("/kiosk/documents");
   };
 
   const questionTranslated = getQuestionText();
@@ -208,20 +289,28 @@ export const KioskHistoryPage: React.FC = () => {
       onReadAloud={speakCurrentQuestion}
     >
       <div className="max-w-2xl mx-auto w-full space-y-6">
+        {/* Error notification banner */}
+        {errorMsg && (
+          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
         {/* Main Question Card */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 space-y-6 animate-in fade-in duration-150">
           {/* Category Pill & Audio Repeat */}
           <div className="flex items-center justify-between">
             <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-teal-50 text-teal-800 border border-teal-200">
-              {currentQuestion.category.replace('_', ' ')}
+              {currentQuestion.category.replace("_", " ")}
             </span>
             <button
               type="button"
               onClick={speakCurrentQuestion}
               className={`p-2.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold cursor-pointer transition-colors ${
                 isPlayingAudio
-                  ? 'bg-teal-600 text-white border-teal-600 animate-pulse'
-                  : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                  ? "bg-teal-600 text-white border-teal-600 animate-pulse"
+                  : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
               }`}
             >
               <Volume2 className="w-4 h-4" />
@@ -243,7 +332,8 @@ export const KioskHistoryPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {currentQuestion.options.map((opt) => {
                   const isSelected = selectedOptions.includes(opt.value);
-                  const optLabel = (opt.label as any)[currentLanguage] || opt.label.en;
+                  const optLabel =
+                    (opt.label as any)[currentLanguage] || opt.label.en;
 
                   return (
                     <button
@@ -252,12 +342,14 @@ export const KioskHistoryPage: React.FC = () => {
                       onClick={() => handleOptionClick(opt.value)}
                       className={`p-3.5 rounded-xl text-left text-sm font-semibold border transition-all cursor-pointer flex items-center justify-between ${
                         isSelected
-                          ? 'border-teal-600 bg-teal-50 text-teal-900 ring-1 ring-teal-600'
-                          : 'border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-slate-800'
+                          ? "border-teal-600 bg-teal-50 text-teal-900 ring-1 ring-teal-600"
+                          : "border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-slate-800"
                       }`}
                     >
                       <span>{optLabel}</span>
-                      {isSelected && <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />}
+                      {isSelected && (
+                        <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
+                      )}
                     </button>
                   );
                 })}
@@ -270,7 +362,9 @@ export const KioskHistoryPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-bold text-teal-950">
                 <Mic className="w-4 h-4 text-teal-700" />
-                <span>Prefer to speak? Press button & describe in your own words:</span>
+                <span>
+                  Prefer to speak? Press button & describe in your own words:
+                </span>
               </div>
               {isRecording && (
                 <span className="flex items-center gap-1.5 text-xs text-rose-600 font-bold animate-pulse">
@@ -286,12 +380,18 @@ export const KioskHistoryPage: React.FC = () => {
                 onClick={toggleRecording}
                 className={`w-full sm:w-auto py-3 px-6 rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all shadow-xs ${
                   isRecording
-                    ? 'bg-rose-600 text-white hover:bg-rose-700 animate-pulse'
-                    : 'bg-teal-600 text-white hover:bg-teal-700'
+                    ? "bg-rose-600 text-white hover:bg-rose-700 animate-pulse"
+                    : "bg-teal-600 text-white hover:bg-teal-700"
                 }`}
               >
-                {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                <span>{isRecording ? 'Stop Recording' : 'Hold to Speak (Voice)'}</span>
+                {isRecording ? (
+                  <MicOff className="w-4 h-4" />
+                ) : (
+                  <Mic className="w-4 h-4" />
+                )}
+                <span>
+                  {isRecording ? "Stop Recording" : "Hold to Speak (Voice)"}
+                </span>
               </button>
 
               {recognizedText && (
@@ -307,10 +407,12 @@ export const KioskHistoryPage: React.FC = () => {
                 <Sparkles className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold text-teal-900 block">
-                    Vernacular Expression Recognized: "{recognizedVernacular.term}"
+                    Vernacular Expression Recognized: "
+                    {recognizedVernacular.term}"
                   </span>
                   <span className="text-slate-600">
-                    Clinical Standard Concept mapped for physician: <strong>{recognizedVernacular.clinicalMeaning}</strong>
+                    Clinical Standard Concept mapped for physician:{" "}
+                    <strong>{recognizedVernacular.clinicalMeaning}</strong>
                   </span>
                 </div>
               </div>
@@ -356,7 +458,11 @@ export const KioskHistoryPage: React.FC = () => {
             onClick={handleNext}
             className="py-3.5 px-7 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-sm font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer"
           >
-            <span>{currentIndex === allQuestions.length - 1 ? 'Proceed to Documents' : 'Next Question'}</span>
+            <span>
+              {currentIndex === allQuestions.length - 1
+                ? "Proceed to Documents"
+                : "Next Question"}
+            </span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

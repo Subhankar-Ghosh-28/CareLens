@@ -19,7 +19,7 @@ import {
 
 export const KioskDocumentsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { uploadedDocuments, addUploadedDocument, removeUploadedDocument, patient } = usePatientSession();
+  const { uploadedDocuments, addUploadedDocument, removeUploadedDocument, patient, consent } = usePatientSession();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -28,6 +28,11 @@ export const KioskDocumentsPage: React.FC = () => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+
+    if (!consent.documentDigitization) {
+      setErrorMsg('Medical document digitization consent is required to process uploaded records. Please return to the consent agreement if you wish to grant permission.');
+      return;
+    }
 
     const file = files[0];
     // Check file size (15MB limit)
@@ -40,10 +45,14 @@ export const KioskDocumentsPage: React.FC = () => {
     setErrorMsg(null);
 
     try {
-      const res = await ocrService.processDocument(file, 'Prescription', patient.id);
+      const res = await ocrService.processDocument(
+        file,
+        'Prescription',
+        String(patient.databaseId ?? patient.id),
+      );
       addUploadedDocument(res.document);
     } catch (err: any) {
-      setErrorMsg('Could not process this document. Please try again or choose a preset.');
+      setErrorMsg(err?.message || 'Could not process this document. Please verify the backend is running and try again, or choose a preset.');
     } finally {
       setIsProcessing(false);
     }
@@ -51,6 +60,11 @@ export const KioskDocumentsPage: React.FC = () => {
 
   // Preset demo document selector (handy for zero-friction kiosk testing)
   const handleAddPresetDoc = async (presetType: 'PRESCRIPTION' | 'LAB_REPORT' | 'DISCHARGE_SUMMARY') => {
+    if (!consent.documentDigitization) {
+      setErrorMsg('Medical document digitization consent is required to process records. Please return to the consent agreement if you wish to grant permission.');
+      return;
+    }
+
     setIsProcessing(true);
     setErrorMsg(null);
 
@@ -60,7 +74,11 @@ export const KioskDocumentsPage: React.FC = () => {
         type: 'application/pdf'
       });
       const cat = presetType === 'LAB_REPORT' ? 'Lab Report' : presetType === 'DISCHARGE_SUMMARY' ? 'Discharge Summary' : 'Prescription';
-      const res = await ocrService.processDocument(fakeFile, cat, patient.id);
+      const res = await ocrService.processDocument(
+        fakeFile,
+        cat,
+        String(patient.databaseId ?? patient.id),
+      );
       addUploadedDocument(res.document);
     } catch (err: any) {
       setErrorMsg('Failed to load sample document.');
@@ -168,7 +186,9 @@ export const KioskDocumentsPage: React.FC = () => {
                 const medsCount = doc.extractedData?.medications?.length || 0;
                 const labCount = doc.extractedData?.labResults?.length || 0;
                 const diagCount = doc.extractedData?.diagnoses?.length || 0;
-                const score = doc.confidenceScore ?? (doc.confidence ? doc.confidence / 100 : 0.95);
+                const score =
+                  doc.confidenceScore ??
+                  (typeof doc.confidence === 'number' ? doc.confidence / 100 : undefined);
 
                 return (
                   <div
@@ -203,7 +223,7 @@ export const KioskDocumentsPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 pt-2 sm:pt-0">
-                      <ConfidenceBadge score={score} />
+                      {typeof score === 'number' && <ConfidenceBadge score={score} />}
                       <button
                         type="button"
                         onClick={() => removeUploadedDocument(doc.id)}

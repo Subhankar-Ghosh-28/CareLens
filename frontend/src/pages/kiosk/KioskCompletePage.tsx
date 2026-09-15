@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { PatientKioskShell } from '../../components/layout/PatientKioskShell';
 import { usePatientSession } from '../../contexts/PatientSessionContext';
 import {
@@ -15,6 +15,7 @@ import {
 
 export const KioskCompletePage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     patient,
     consent,
@@ -24,6 +25,9 @@ export const KioskCompletePage: React.FC = () => {
   } = usePatientSession();
 
   const [sessionCleared, setSessionCleared] = useState(false);
+  const doctorPatientId =
+    (location.state as { doctorPatientId?: string } | null)?.doctorPatientId ||
+    String(patient.databaseId ?? patient.id);
 
   const handleEndSessionAndWipe = async () => {
     await endSession('Patient finished intake and pressed End Session & Clear Terminal');
@@ -141,7 +145,7 @@ export const KioskCompletePage: React.FC = () => {
         {/* Doctor Demo Shortcut */}
         <div className="pt-2 text-center">
           <Link
-            to="/doctor/patient/pt_ananya_01"
+            to={`/doctor/patient/${doctorPatientId}`}
             className="inline-flex items-center gap-1.5 text-xs text-teal-700 hover:text-teal-900 font-semibold underline"
           >
             <Stethoscope className="w-4 h-4 text-teal-600" />

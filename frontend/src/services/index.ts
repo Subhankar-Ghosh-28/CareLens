@@ -24,13 +24,16 @@ import {
   IHisService,
   IAuditService
 } from './interfaces';
+import { BackendOcrService } from './backendOcrService';
+import { BackendConsentService } from './backendConsentService';
+import { BackendClinicalHistoryService } from './backendClinicalHistoryService';
 
 // Service Registry with deterministic adapters
 export const abhaService: IAbhaService = new DemoAbhaService();
-export const consentService: IConsentService = new DemoConsentService();
-export const ocrService: IOcrService = new DemoOcrService();
+export const consentService: IConsentService = new BackendConsentService();
+export const ocrService: IOcrService = new BackendOcrService();
 export const voiceService: IVoiceService = new DemoVoiceService();
-export const clinicalHistoryService: IClinicalHistoryService = new DemoClinicalHistoryService();
+export const clinicalHistoryService: IClinicalHistoryService = new BackendClinicalHistoryService();
 export const timelineService: ITimelineService = new DemoTimelineService();
 export const summaryService: ISummaryService = new DemoSummaryService();
 export const alertService: IAlertService = new DemoAlertService();

@@ -37,6 +37,7 @@ export const DoctorPatientDetailPage: React.FC = () => {
     getSummaryByPatientId,
     getTimelineByPatientId,
     getDocumentsByPatientId,
+    getConsentsByPatientId,
     verifySummary,
     updateSummarySection,
     exportToHis,
@@ -48,6 +49,8 @@ export const DoctorPatientDetailPage: React.FC = () => {
   const summary = getSummaryByPatientId(patientId);
   const timeline = getTimelineByPatientId(patientId);
   const documents = getDocumentsByPatientId(patientId);
+  const consents = getConsentsByPatientId(patientId);
+  const grantedConsentCount = consents.filter((c) => c.status === 'GRANTED').length;
   const patientAlerts = alerts.filter(a => a.patientId === patientId);
 
   // Tabs
@@ -81,6 +84,18 @@ export const DoctorPatientDetailPage: React.FC = () => {
     timestamp?: string;
   } | null>(null);
   const [isExportingHis, setIsExportingHis] = useState(false);
+  const [realFhirBundle, setRealFhirBundle] = useState<any>(null);
+
+  React.useEffect(() => {
+    if (/^\d+$/.test(patientId)) {
+      fetch(`http://localhost:8000/api/patients/${patientId}/fhir`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((bundle) => {
+          if (bundle) setRealFhirBundle(bundle);
+        })
+        .catch(() => {});
+    }
+  }, [patientId]);
 
   if (!patient || !summary) {
     return (
@@ -179,6 +194,15 @@ export const DoctorPatientDetailPage: React.FC = () => {
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-100 text-slate-700">
                     ABHA: {patient.abhaId}
+                  </span>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                      grantedConsentCount > 0
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                    }`}
+                  >
+                    Consent: {grantedConsentCount}/3 Granted
                   </span>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
@@ -530,42 +554,126 @@ export const DoctorPatientDetailPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Prakriti (Constitution)
+            {!summary.ayushAssessment || (!summary.ayushAssessment.prakriti && !summary.ayushAssessment.agni) ? (
+              <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-2">
+                <span className="font-bold text-slate-800 text-sm block">
+                  No AYUSH Assessment Recorded
                 </span>
-                <div className="text-base font-bold text-slate-900">
-                  {summary.ayushAssessment?.prakriti || 'Pitta-Vata Predominant'}
-                </div>
-                <p className="text-[11px] text-slate-500">Heat sensitivity & irregular appetite</p>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  This patient's clinical intake was conducted under the {patient.clinicalTrack === 'AYUSH' ? 'AYUSH' : 'Modern Medicine'} pathway without a completed Dashavidha Pariksha questionnaire.
+                </p>
               </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Prakriti (Constitution)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.prakriti || 'Not assessed'}
+                    </div>
+                  </div>
 
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Agni (Digestive Fire)
-                </span>
-                <div className="text-base font-bold text-slate-900">
-                  {summary.ayushAssessment?.agni || 'Tikshnagni (Intense / Acidic)'}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Vikriti (Dosha Imbalance)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.vikriti || 'Not assessed'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Agni / Ahara Shakti (Digestion)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.agni || summary.ayushAssessment.aharaShakti || 'Not assessed'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Sara (Tissue Vitality)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.sara || 'Not assessed'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Samhanana (Body Build)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.samhanana || 'Not assessed'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Satva (Mental Resilience)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.satva || 'Not assessed'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Vyayama Shakti (Endurance)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.vyayamaShakti || 'Not assessed'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Satmya (Adaptability)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.satmya || 'Not assessed'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Koshtha (Bowel Habit)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.koshtha || 'Not assessed'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Pramana (Body Proportion)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.pramana || 'Not assessed'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Vaya (Life Stage)
+                    </span>
+                    <div className="text-base font-bold text-slate-900">
+                      {summary.ayushAssessment.vaya || 'Not assessed'}
+                    </div>
+                  </div>
                 </div>
-                <p className="text-[11px] text-slate-500">Tendency towards hyperacidity</p>
-              </div>
 
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Koshtha (Bowel Habit)
-                </span>
-                <div className="text-base font-bold text-slate-900">
-                  {summary.ayushAssessment?.koshtha || 'Madhyama (Regular)'}
-                </div>
-                <p className="text-[11px] text-slate-500">Normal evacuation pattern</p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-2">
-              <span className="font-bold text-slate-900 block">Lifestyle & Dietary Inquiry (Ahara & Vihara):</span>
-              <p>{summary.ayushAssessment?.dietaryHabits || 'Predominantly vegetarian, takes warm milk at night, reports disturbed sleep due to work stress.'}</p>
-            </div>
+                {summary.ayushAssessment.dietaryHabits && (
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-2">
+                    <span className="font-bold text-slate-900 block">Assessment Notes & Intake Context:</span>
+                    <p>{summary.ayushAssessment.dietaryHabits}</p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -727,7 +835,7 @@ export const DoctorPatientDetailPage: React.FC = () => {
 
             <div className="p-3 bg-slate-900 text-slate-200 rounded-2xl font-mono text-[11px] max-h-48 overflow-y-auto space-y-1">
               <div className="text-teal-400 font-bold">// FHIR R4 Document Bundle Preview</div>
-              <pre>{JSON.stringify(fhirBundlePayload, null, 2)}</pre>
+              <pre>{JSON.stringify(realFhirBundle || fhirBundlePayload, null, 2)}</pre>
             </div>
 
             {hisExportResult ? (

@@ -62,7 +62,7 @@ export const KioskTimelinePage: React.FC = () => {
 
   return (
     <PatientKioskShell
-      currentStepIndex={4}
+      currentStepIndex={5}
       title="Your Chronological Health Story"
       subtitle="CareLens aligned your past medical events, surgeries, and reports into a timeline for your physician."
     >

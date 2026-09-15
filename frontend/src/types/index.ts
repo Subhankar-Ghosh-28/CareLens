@@ -29,6 +29,7 @@ export interface TraceableValue<T = string> {
 
 export interface Patient {
   id: string;
+  databaseId?: number;
   abhaId?: string;
   abhaStatus: 'VERIFIED' | 'SANDBOX_VERIFIED' | 'NOT_CONFIGURED' | 'NONE';
   name: string;
@@ -113,7 +114,7 @@ export interface MedicalDocument {
   processingStatus: 'Pending' | 'Scanning' | 'OCR Processing' | 'Extracted' | 'Failed';
   processingError?: string;
   previewUrl?: string;
-  confidence: number;
+  confidence: number | null;
   extractedTextSnippet?: string;
   isDemo?: boolean;
   title?: string;
@@ -125,6 +126,7 @@ export interface MedicalDocument {
     labResults: any[];
     diagnoses?: any[];
   };
+  ocrRawText?: string;
 }
 
 export interface ExtractedEntity {

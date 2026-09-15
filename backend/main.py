@@ -3,11 +3,24 @@ CareLens Pre-Consultation AI Platform - FastAPI Backend
 Smart India Hackathon 2026 - Team SW11
 """
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+import os
+import uuid
+from typing import List, Dict, Any, Optional
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
-import uuid
+from sqlalchemy import text
+
+from app.core.database import engine, Base
+from app.api.routes.patients import router as patient_router
+from app.api.routes.abha import router as abha_router
+from app.models.patient import Patient
+from app.models.clinical_history import ClinicalHistory
+from app.api.routes.clinical_history import router as clinical_history_router
+from app.models.medical_document import MedicalDocument
+from app.api.routes.medical_documents import router as medical_document_router
+from app.models.consent import PatientConsent
+from app.api.routes.consents import router as consent_router
 
 from clinical_engine import (
     interpret_rural_expressions,
@@ -22,21 +35,76 @@ from biobert_ner import extract_clinical_entities_biobert
 from fhir_service import generate_fhir_bundle
 
 app = FastAPI(
-    title="CareLens AI Backend",
+    title="CareLens API",
     description="Intelligent Clinical Assistant & Pre-Consultation Triage Platform",
-    version="1.0.0"
+    version="1.0.0",
+    debug=os.getenv("DEBUG", "False").lower() in ("true", "1"),
 )
 
 # Enable CORS for frontend development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:5173",
+        "*"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# In-memory storage for active patient intake and triage queue
+# Database table creation and foreign key verification
+try:
+    Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_patient_consents_patient'
+                    ) THEN
+                        ALTER TABLE patient_consents
+                        ADD CONSTRAINT fk_patient_consents_patient
+                        FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
+                    END IF;
+
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_clinical_history_patient'
+                    ) THEN
+                        ALTER TABLE clinical_history
+                        ADD CONSTRAINT fk_clinical_history_patient
+                        FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
+                    END IF;
+
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_medical_documents_patient'
+                    ) THEN
+                        ALTER TABLE medical_documents
+                        ADD CONSTRAINT fk_medical_documents_patient
+                        FOREIGN KEY ("patientId") REFERENCES patients(id) ON DELETE CASCADE;
+                    END IF;
+                END $$;
+                """
+            )
+        )
+except Exception as e:
+    print(f"[DB MIGRATION NOTICE] FK constraint check: {e}")
+
+# Include relational database routers
+app.include_router(patient_router)
+app.include_router(abha_router)
+app.include_router(clinical_history_router)
+app.include_router(medical_document_router)
+app.include_router(consent_router)
+
+# In-memory storage for demo patient intake and triage queue
 PATIENTS_DB: Dict[str, Dict[str, Any]] = {
     "P-101": {
         "id": "P-101",
@@ -88,76 +156,77 @@ PATIENTS_DB: Dict[str, Dict[str, Any]] = {
         "name": "Sunita Devi",
         "age": 52,
         "gender": "Female",
-        "abha_id": "91-7721-8390-1124",
-        "phone": "+91 97123 45678",
+        "abha_id": "91-1122-3344-5566",
+        "phone": "+91 94120 78901",
         "language": "Hindi",
-        "chief_complaint": "Haath pair sunn ho jate hain aur baar baar peshab jana padta hai",
-        "transcript": "Pichhle kuch mahino se raat me pao me jhanjhanahat aur jalan rehti hai, pyaas bohot lagti hai.",
+        "chief_complaint": "Haath pair me jhanjhanahat aur kamzori (Tingling sensations in extremities and fatigue)",
+        "transcript": "Mujhe dono pair me sui jaisi chubhan lagti hai, aur bahut jaldi thak jaati hoon.",
         "interpreted_terms": [
-            {"colloquial_input": "haath pair sunn", "clinical_term": "Peripheral Paresthesia / Neuropathy", "severity": "medium"},
-            {"colloquial_input": "baar baar peshab", "clinical_term": "Polyuria & Polydipsia (Hyperglycemia)", "severity": "medium"}
+            {"colloquial_input": "haath pair me jhanjhanahat", "clinical_term": "Peripheral Neuropathy / Paresthesia", "severity": "medium"},
+            {"colloquial_input": "kamzori", "clinical_term": "Chronic Asthenia / Fatigue", "severity": "low"}
         ],
         "triage": {
-            "triage_level": "URGENT",
-            "queue_assignment": "Urgent Triage (Within 15 mins)",
-            "urgency_score": 65,
+            "triage_level": "MODERATE_FOLLOWUP",
+            "queue_assignment": "Diabetic Complications / Endocrinology Bay",
+            "urgency_score": 68,
             "red_flag_detected": False,
-            "flag_title": "Elevated Symptom Urgency",
-            "clinical_action": "Check Fasting Blood Sugar & Vitals."
+            "flag_title": "Uncontrolled Type 2 Diabetes with Peripheral Neuropathy",
+            "clinical_action": "Comprehensive foot examination, HbA1c review, insulin regimen adjustment."
         },
-        "allergies": "Sulfa drugs",
+        "allergies": "Sulfa drugs (rash)",
         "past_surgeries": "Cholecystectomy (2018)",
-        "regular_medications": "Metformin 500mg BD, Glimepiride 1mg OD",
+        "regular_medications": "Metformin 1000mg BD, Glimepiride 2mg OD",
         "timeline": [
-            {"year": "2019", "date": "12-Apr-2019", "event": "Type 2 Diabetes Mellitus Diagnosed (HbA1c 7.8%)", "category": "diagnosis"},
-            {"year": "2021", "date": "20-Aug-2021", "event": "HbA1c increased to 9.2% -> Added Glimepiride 1mg", "category": "escalation"},
-            {"year": "2025", "date": "14-Feb-2025", "event": "Severe uncontrolled glycemia (HbA1c 10.4%) -> Basal Insulin Advised", "category": "treatment"},
-            {"year": "2026", "date": "14-Sep-2026", "event": "CareLens OPD intake for worsening neuropathy", "category": "intake"}
+            {"year": "2019", "date": "10-Jan-2019", "event": "Type 2 Diabetes Mellitus diagnosed (Fasting 188 mg/dL)", "category": "diagnosis"},
+            {"year": "2021", "date": "22-Aug-2021", "event": "HbA1c elevated to 8.4% -> Metformin dose increased", "category": "lab"},
+            {"year": "2023", "date": "05-Nov-2023", "event": "Added Tab Glimepiride 2mg. Diabetic Neuropathy suspected", "category": "medication"},
+            {"year": "2025", "date": "12-Dec-2025", "event": "HbA1c 10.4%. Basal insulin initiation advised", "category": "lab"}
         ],
         "rapid_summary": {
-            "chief_complaint_summary": "Progressive nocturnal lower extremity numbness & polyuria in chronic diabetic.",
-            "rural_interpretations": ["haath pair sunn -> Peripheral Neuropathy", "baar baar peshab -> Polyuria"],
-            "critical_red_flags": "None detected",
+            "chief_complaint_summary": "Bilateral lower limb paresthesias with progressive diabetic escalation over 7 years.",
+            "rural_interpretations": ["jhanjhanahat -> Peripheral Neuropathy", "kamzori -> Fatigue"],
+            "critical_red_flags": "Severe chronic glycemic escalation (HbA1c > 10%) with early neuropathy.",
             "key_history_highlights": [
-                "Allergies: Sulfa drugs",
+                "Allergies: Sulfa drugs (cutaneous rash)",
                 "Past Surgeries: Cholecystectomy (2018)",
-                "Medications: Metformin 500mg, Glimepiride 1mg"
+                "Medications: Metformin 1000mg BD, Glimepiride 2mg OD"
             ]
         },
-        "doctor_notes": "HbA1c trend 7.8% -> 9.2% -> 10.4%. Requires intensification to Basal-Bolus Insulin regimen. Prescribe Pregabalin 75mg HS for neuropathic pain.",
-        "status": "Waiting"
+        "doctor_notes": "Prescription reviewed. Monofilament test shows reduced sensation L4-S1.",
+        "status": "In Consultation"
     },
     "P-103": {
         "id": "P-103",
-        "name": "Ananya Roy",
-        "age": 24,
-        "gender": "Female",
-        "abha_id": "91-3142-9980-6523",
-        "phone": "+91 98301 99281",
-        "language": "Bengali",
-        "chief_complaint": "Galay byatha aar jwor (Throat pain and moderate fever for 2 days)",
-        "transcript": "Duto din dhore galay byatha, khabar gilte koshto hochhe, shonge halka jwor.",
+        "name": "Amit Sharma",
+        "age": 29,
+        "gender": "Male",
+        "abha_id": "91-9988-7766-5544",
+        "phone": "+91 97110 55443",
+        "language": "English / Hindi",
+        "chief_complaint": "Gale me kharash aur halka bukhar (Sore throat and low grade fever for 2 days)",
+        "transcript": "Throat pain while swallowing food and mild shivering since yesterday evening.",
         "interpreted_terms": [
-            {"colloquial_input": "galay byatha", "clinical_term": "Acute Pharyngitis / Odynophagia", "severity": "low"}
+            {"colloquial_input": "gale me kharash", "clinical_term": "Pharyngitis / Odynophagia", "severity": "low"},
+            {"colloquial_input": "halka bukhar", "clinical_term": "Low-grade Pyrexia", "severity": "low"}
         ],
         "triage": {
             "triage_level": "ROUTINE",
-            "queue_assignment": "Standard Queue",
-            "urgency_score": 20,
+            "queue_assignment": "General Medicine OPD - Room 12",
+            "urgency_score": 25,
             "red_flag_detected": False,
-            "flag_title": "Normal Standard Triage",
-            "clinical_action": "Standard OPD consultation."
+            "flag_title": "Acute Upper Respiratory Tract Infection",
+            "clinical_action": "Symptomatic treatment, throat swab if symptoms persist > 5 days."
         },
         "allergies": "NKDA",
         "past_surgeries": "None",
         "regular_medications": "None",
         "timeline": [
-            {"year": "2026", "date": "14-Sep-2026", "event": "Acute Pharyngitis onset", "category": "intake"}
+            {"year": "2026", "date": "13-Sep-2026", "event": "Onset of acute pharyngitis following viral exposure", "category": "intake"}
         ],
         "rapid_summary": {
-            "chief_complaint_summary": "Acute pharyngitis with odynophagia and low grade pyrexia for 48 hours.",
-            "rural_interpretations": ["galay byatha -> Pharyngitis"],
-            "critical_red_flags": "None detected",
+            "chief_complaint_summary": "Acute onset odynophagia and mild fever for 48 hours without dyspnoea.",
+            "rural_interpretations": ["gale me kharash -> Pharyngitis", "halka bukhar -> Pyrexia"],
+            "critical_red_flags": "None. Normal respiratory rate and saturation.",
             "key_history_highlights": ["Allergies: NKDA", "Past Surgeries: None", "Medications: None"]
         },
         "doctor_notes": "Erythematous posterior pharyngeal wall. Warm saline gargles, Tab Paracetamol 650mg SOS.",
@@ -193,13 +262,31 @@ class DoctorUpdateNoteRequest(BaseModel):
 
 
 @app.get("/")
-def health_check():
+def root():
     return {
         "service": "CareLens Pre-Consultation AI Platform",
+        "message": "CareLens API is running",
         "status": "active",
         "sih_team": "SW11",
         "version": "1.0.0"
     }
+
+
+@app.get("/api/health")
+def health_check():
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        return {
+            "status": "healthy",
+            "database": "connected"
+        }
+    except Exception:
+        return {
+            "status": "unhealthy",
+            "database": "disconnected",
+            "error": "Database connection unavailable"
+        }
 
 
 @app.get("/api/lexicon")
@@ -262,7 +349,7 @@ def get_ocr_samples():
 async def upload_prescription_image(file: UploadFile = File(...)):
     """
     Upload real scanned prescription photo or report (PNG/JPG).
-    Runs free local EasyOCR + BioBERT Transformer pipeline to extract text & clinical entities.
+    Runs local EasyOCR / Tesseract pipeline to extract text & clinical entities.
     """
     image_bytes = await file.read()
     result = run_easyocr_on_image(image_bytes)
@@ -277,7 +364,6 @@ def extract_biobert_entities(req: ChatIntakeRequest):
     """
     result = extract_clinical_entities_biobert(req.message)
     return result
-
 
 
 @app.post("/api/intake/analyze")
@@ -327,9 +413,9 @@ def finalize_intake(req: IntakeAnalyzeRequest):
     return patient_payload
 
 
-@app.get("/api/patients")
-def list_patients():
-    """Returns all queued patients split by Priority vs Standard Queue."""
+@app.get("/api/demo-queue")
+def list_demo_patients():
+    """Returns all queued demo patients split by Priority vs Standard Queue."""
     priority_queue = [p for p in PATIENTS_DB.values() if p["triage"]["red_flag_detected"] or p["triage"]["triage_level"] == "CRITICAL_PRIORITY"]
     standard_queue = [p for p in PATIENTS_DB.values() if p not in priority_queue]
     return {
@@ -339,16 +425,16 @@ def list_patients():
     }
 
 
-@app.get("/api/patients/{patient_id}")
-def get_patient(patient_id: str):
+@app.get("/api/demo-patient/{patient_id}")
+def get_demo_patient(patient_id: str):
     if patient_id not in PATIENTS_DB:
         raise HTTPException(status_code=404, detail="Patient not found")
     return PATIENTS_DB[patient_id]
 
 
-@app.patch("/api/patients/{patient_id}")
-def update_patient_notes(patient_id: str, req: DoctorUpdateNoteRequest):
-    """Physician-in-Control: Doctor edits summary, notes and status."""
+@app.patch("/api/demo-patient/{patient_id}")
+def update_demo_patient_notes(patient_id: str, req: DoctorUpdateNoteRequest):
+    """Physician-in-Control: Doctor edits summary, notes and status for demo patient."""
     if patient_id not in PATIENTS_DB:
         raise HTTPException(status_code=404, detail="Patient not found")
     patient = PATIENTS_DB[patient_id]

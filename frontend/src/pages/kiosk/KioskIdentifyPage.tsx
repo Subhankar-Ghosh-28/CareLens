@@ -6,37 +6,79 @@ import { ArrowRight, User, Phone, Calendar, HeartPulse, Stethoscope, Sparkles } 
 
 export const KioskIdentifyPage: React.FC = () => {
   const navigate = useNavigate();
-  const { patient, updatePatient, setClinicalTrack } = usePatientSession();
+  const { patient, startSession, setClinicalTrack } = usePatientSession();
 
-  const [name, setName] = useState(patient.name || 'Ananya Sharma');
-  const [age, setAge] = useState(String(patient.age || 42));
-  const [gender, setGender] = useState<'Female' | 'Male' | 'Other'>(patient.gender as any || 'Female');
-  const [phone, setPhone] = useState(patient.phone || '+91 98765 43210');
+  const [name, setName] = useState(
+    patient.name && patient.id !== 'pt_ananya_01' && patient.name !== 'Walk-in Patient'
+      ? patient.name
+      : ''
+  );
+  const [age, setAge] = useState(
+    patient.id !== 'pt_ananya_01' && patient.age ? String(patient.age) : '35'
+  );
+  const [gender, setGender] = useState<'Female' | 'Male' | 'Other'>((patient.gender as any) || 'Female');
+  const [phone, setPhone] = useState(
+    patient.phone && patient.id !== 'pt_ananya_01' && patient.phone !== '+91 98765 43210'
+      ? patient.phone
+      : ''
+  );
   const [track, setTrack] = useState<'MODERN_MEDICINE' | 'AYUSH'>(patient.clinicalTrack || 'MODERN_MEDICINE');
   const [error, setError] = useState<string | null>(null);
 
-  const handleContinue = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      setError('Please enter your full name');
-      return;
-    }
-    const numAge = parseInt(age, 10);
-    if (isNaN(numAge) || numAge <= 0 || numAge > 120) {
-      setError('Please enter a valid age');
-      return;
+ const handleContinue = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  if (!name.trim()) {
+    setError('Please enter your full name');
+    return;
+  }
+
+  const numAge = parseInt(age, 10);
+
+  if (isNaN(numAge) || numAge <= 0 || numAge > 120) {
+    setError('Please enter a valid age');
+    return;
+  }
+
+  try {
+    const response = await fetch('http://localhost:8000/api/patients/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: name.trim(),
+        age: numAge,
+        gender,
+        phone: phone.trim(),
+        clinicalTrack: track
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to save patient');
     }
 
-    updatePatient({
-      name: name.trim(),
-      age: numAge,
-      gender,
-      phone: phone.trim(),
-      clinicalTrack: track
+    const savedPatient = await response.json();
+
+    startSession({
+      id: String(savedPatient.id),
+      databaseId: savedPatient.id,
+      name: savedPatient.name,
+      age: savedPatient.age,
+      gender: savedPatient.gender,
+      phone: savedPatient.phone,
+      clinicalTrack: savedPatient.clinicalTrack
     });
+
     setClinicalTrack(track);
     navigate('/kiosk/abha');
-  };
+
+  } catch (err) {
+    console.error(err);
+    setError('Unable to save patient. Please try again.');
+  }
+};
 
   return (
     <PatientKioskShell
