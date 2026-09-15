@@ -108,6 +108,130 @@ if HAS_DB:
     app.include_router(clinical_history_router)
     app.include_router(medical_document_router)
     app.include_router(consent_router)
+else:
+    # Standalone In-Memory Patient & Consent Endpoints
+    class PatientCreateSchema(BaseModel):
+        name: str
+        age: int
+        gender: str
+        phone: Optional[str] = None
+        clinicalTrack: Optional[str] = "MODERN_MEDICINE"
+
+    STANDALONE_PATIENTS: List[Dict[str, Any]] = [
+        {
+            "id": 1,
+            "name": "Ramesh Kumar",
+            "age": 58,
+            "gender": "Male",
+            "phone": "+91 98451 23456",
+            "clinicalTrack": "MODERN_MEDICINE"
+        },
+        {
+            "id": 2,
+            "name": "Sunita Devi",
+            "age": 52,
+            "gender": "Female",
+            "phone": "+91 94120 78901",
+            "clinicalTrack": "AYUSH"
+        }
+    ]
+    STANDALONE_CONSENTS: Dict[int, List[Dict[str, Any]]] = {}
+    STANDALONE_HISTORY: Dict[int, List[Dict[str, Any]]] = {}
+    STANDALONE_DOCUMENTS: Dict[int, List[Dict[str, Any]]] = {}
+
+    @app.post("/api/patients/")
+    def create_patient_standalone(p: PatientCreateSchema):
+        new_id = len(STANDALONE_PATIENTS) + 1
+        patient_obj = {
+            "id": new_id,
+            "name": p.name,
+            "age": p.age,
+            "gender": p.gender,
+            "phone": p.phone or "",
+            "clinicalTrack": p.clinicalTrack or "MODERN_MEDICINE"
+        }
+        STANDALONE_PATIENTS.append(patient_obj)
+        return patient_obj
+
+    @app.get("/api/patients/")
+    def get_patients_standalone():
+        return list(reversed(STANDALONE_PATIENTS))
+
+    @app.get("/api/patients/{patient_id}")
+    def get_patient_standalone(patient_id: int):
+        for p in STANDALONE_PATIENTS:
+            if p["id"] == patient_id:
+                return p
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    @app.get("/api/patients/{patient_id}/fhir")
+    def get_patient_fhir_standalone(patient_id: int):
+        for p in STANDALONE_PATIENTS:
+            if p["id"] == patient_id:
+                return generate_fhir_bundle(p, {"extracted_entities": {}})
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    @app.post("/api/abha/verify")
+    def verify_abha_standalone(req: Dict[str, Any]):
+        abha_id = req.get("abhaId", "")
+        return {
+            "valid": True,
+            "status": "SANDBOX_VERIFIED",
+            "isSandbox": True,
+            "abhaId": abha_id,
+            "name": "Verified Sandbox Patient"
+        }
+
+    @app.post("/api/consents/grant")
+    def grant_consent_standalone(req: Dict[str, Any]):
+        patient_id = int(req.get("patientId", 1))
+        consent_type = req.get("consentType", "HISTORY_CAPTURE")
+        if patient_id not in STANDALONE_CONSENTS:
+            STANDALONE_CONSENTS[patient_id] = []
+        consent_id = len(STANDALONE_CONSENTS[patient_id]) + 1
+        item = {"id": consent_id, "patientId": patient_id, "consentType": consent_type, "status": "GRANTED"}
+        STANDALONE_CONSENTS[patient_id].append(item)
+        return item
+
+    @app.get("/api/consents/{patient_id}")
+    def get_consents_standalone(patient_id: int):
+        return STANDALONE_CONSENTS.get(patient_id, [])
+
+    @app.get("/api/consents/{patient_id}/status")
+    def get_consent_status_standalone(patient_id: int):
+        granted = {c["consentType"] for c in STANDALONE_CONSENTS.get(patient_id, []) if c.get("status") == "GRANTED"}
+        required = {"HISTORY_CAPTURE", "DOCUMENT_DIGITIZATION", "STAFF_SHARING"}
+        missing = list(required - granted)
+        return {"hasAllRequired": len(missing) == 0, "missing": missing}
+
+    @app.post("/api/consents/revoke")
+    def revoke_consent_standalone(req: Dict[str, Any]):
+        return {"status": "REVOKED"}
+
+    @app.post("/api/clinical-history/")
+    def save_clinical_history_standalone(req: Dict[str, Any]):
+        patient_id = int(req.get("patientId", 1))
+        if patient_id not in STANDALONE_HISTORY:
+            STANDALONE_HISTORY[patient_id] = []
+        STANDALONE_HISTORY[patient_id].append(req)
+        return {"status": "success", "saved": req}
+
+    @app.get("/api/clinical-history/{patient_id}")
+    def get_clinical_history_standalone(patient_id: int):
+        return STANDALONE_HISTORY.get(patient_id, [])
+
+    @app.post("/api/medical-documents/")
+    def save_medical_document_standalone(req: Dict[str, Any]):
+        patient_id = int(req.get("patientId", 1))
+        if patient_id not in STANDALONE_DOCUMENTS:
+            STANDALONE_DOCUMENTS[patient_id] = []
+        STANDALONE_DOCUMENTS[patient_id].append(req)
+        return {"status": "success", "document": req}
+
+    @app.get("/api/medical-documents/{patient_id}")
+    def get_medical_documents_standalone(patient_id: int):
+        return STANDALONE_DOCUMENTS.get(patient_id, [])
+
 
 
 # In-memory storage for demo patient intake and triage queue

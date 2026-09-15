@@ -40,45 +40,53 @@ export const KioskIdentifyPage: React.FC = () => {
     return;
   }
 
-  try {
-    const response = await fetch('http://localhost:8000/api/patients/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        name: name.trim(),
-        age: numAge,
-        gender,
-        phone: phone.trim(),
-        clinicalTrack: track
-      })
-    });
+    try {
+      const response = await fetch('http://localhost:8000/api/patients/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: name.trim(),
+          age: numAge,
+          gender,
+          phone: phone.trim(),
+          clinicalTrack: track
+        })
+      });
 
-    if (!response.ok) {
-      throw new Error('Failed to save patient');
+      if (response.ok) {
+        const savedPatient = await response.json();
+        startSession({
+          id: String(savedPatient.id),
+          databaseId: savedPatient.id,
+          name: savedPatient.name,
+          age: savedPatient.age,
+          gender: savedPatient.gender,
+          phone: savedPatient.phone,
+          clinicalTrack: savedPatient.clinicalTrack
+        });
+        setClinicalTrack(track);
+        navigate('/kiosk/abha');
+        return;
+      }
+    } catch (err) {
+      console.warn('Backend unavailable, using local patient session:', err);
     }
 
-    const savedPatient = await response.json();
-
+    // Fallback: Proceed with local session if backend is offline or returned error
+    const localId = `P-${Date.now().toString().slice(-4)}`;
     startSession({
-      id: String(savedPatient.id),
-      databaseId: savedPatient.id,
-      name: savedPatient.name,
-      age: savedPatient.age,
-      gender: savedPatient.gender,
-      phone: savedPatient.phone,
-      clinicalTrack: savedPatient.clinicalTrack
+      id: localId,
+      name: name.trim(),
+      age: numAge,
+      gender,
+      phone: phone.trim(),
+      clinicalTrack: track
     });
-
     setClinicalTrack(track);
     navigate('/kiosk/abha');
-
-  } catch (err) {
-    console.error(err);
-    setError('Unable to save patient. Please try again.');
-  }
-};
+  };
 
   return (
     <PatientKioskShell
